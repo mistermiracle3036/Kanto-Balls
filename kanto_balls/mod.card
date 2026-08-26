@@ -1,8 +1,11 @@
 return {
-  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold. Version 0.7.0 adds Luxury and Cherish Balls plus Gold's Quick, Timer, Net, Dusk, Repeat, Dream and Dive Balls, all with readable mart descriptions. Gold also has Kurt's BALL CASE for crafting and storage.",
+  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.0 adds four quest-artifact balls, including Cage Ball's tightening odds and Crystal Ball's keep-or-release catch review, and carries every Gen 2 feature across all three games.",
   author = "Mister Miracle",
   tags = { "balls", "items", "template", "gold", "crafting", "apricorns" },
   differences = {
+    "CAGE BALL (quest/dev only): 1x on its first throw, 2x after one failed Cage Ball, then guaranteed after two failures in the same battle.",
+    "CRYSTAL BALL (quest/dev only): plain catch odds, followed after normal catch storage by a two-page details/moves review. KEEP is default; confirmed RELEASE refunds the ball first and removes only the exact newly caught party/box record.",
+    "STRANGE BALL (quest/dev only): independently chooses 0.75x, 1x, 1.5x or 2x on each real throw using battle RNG. ORIGIN BALL (quest/dev only): guaranteed wild catch for a fateful encounter.",
     "GOLD CANON SET: Quick (4x on turn 1), Timer (grows to 4x), Net (3x on WATER/BUG), Dusk (3x at night or in caves), Repeat (3x on a previously caught species), Dream (4x on sleep) and Dive (3x while fishing or surfing). Each costs 1000 at Great/Ultra marts and has a two-line mart description.",
     "LUXURY BALL (3000, both games): plain catch odds; on Gold the catch starts at 120 happiness. CHERISH BALL: plain odds, never sold; Kurt gives one after the Gold BALL CASE is safely added.",
     "BALL CASE (Gold only): a key item Kurt gives you when you return to him from the Slowpoke Well. Use it from the pack to open a workbench that mixes Apricorns into balls, and to STOW ALL / TAKE BACK this mod's balls. A full pack returns what fits and keeps the rest -- nothing is lost. Apricorns and the case itself are never stowed.",
@@ -12,8 +15,8 @@ return {
     "CATALYST BALL (craft: 1 Green + 1 Yellow Apricorn): 4x on species that evolve with a stone.",
     "CRADLE BALL (craft: 1 White + 1 Pink + 1 Green + 1 Red Apricorn): never misses, and the catch restarts at level 1 with level-1 moves. DVs and stat experience are kept, so it ends up stronger at 100 than a late catch -- the recipe IS the balance.",
     "ACE BALL: a case recipe that stays hidden until another mod writes save.recipeUnlocks['route_aces:ace_ball']. Not obtainable on its own; ships inert.",
-    "GS BALL and BEAST BALL are behind the [DEV] CHEAP BALLS option, but are REGISTERED on every boot so one obtained earlier keeps its pocket and colour.",
-    "Bag capacity grows by one slot per OBTAINABLE ball. Gen 2: +20 with the canon set, or +13 when its seven shared ids are deferred. Gen 1: +8 to the ITEM bag. +2 on either under [DEV] CHEAP BALLS. It is additive over other capacity changes; VANILLA BAG LIMITS keeps the stock cap.",
+    "GS BALL, BEAST BALL and the four quest-artifact balls are behind [DEV] CHEAP BALLS, but are REGISTERED on every boot so a quest/imported one keeps its pocket, colour and behavior.",
+    "Bag capacity grows by one slot per OBTAINABLE ball. Gen 2: +20 with the canon set, or +13 when its seven shared ids are deferred. Gen 1: +8 to the ITEM bag. +6 on either under [DEV] CHEAP BALLS. It is additive over other capacity changes; VANILLA BAG LIMITS keeps the stock cap.",
     "PREMIER BALL: not sold; buy 10+ balls in one purchase and the clerk throws in one free per 10 (buy 20, get 2). Announced in the shop text on Gen 1; arrives silently in the BALLS pocket on Gold. Plain 1x catch odds.",
     "NEST BALL (1000): better against low-level targets -- 4x at Lv15 or under, 3x at 25, 2x at 35, 1x above. Sold at the Great/Ultra marts.",
     "MOON BALL (1200): Gen 1 only -- 4x against species that evolve by Moon Stone. Sold at Pewter Mart, before Mt. Moon. Gold has its own native Moon Ball.",
@@ -27,10 +30,10 @@ return {
   credits = { "Mart-shelf mechanism follows Custom Poke Balls by magalvao (github.com/magalvao/custom-pokeballs)." },
   compat = {
     "No dependencies. The purchase detection behind the Premier bonus was the separate shop_events mod until 0.6.0 and now lives here; it still EMITS shop.purchased on the same bus, so any other mod listening for it keeps working. If the standalone shop_events is still installed this mod defers to it rather than wrapping Bag.add/Sound.play a second time, which would award the bonus twice.",
-    "Runs on Gen 1 (Red/Blue/Yellow) and Gen 2 (Gold) since 0.4.0.",
+    "Runs on Gen 1 (Red/Blue/Yellow) and every Gen 2 game (Gold/Silver/Crystal). Gold/Silver/Crystal are explicit runtime-test fixtures in 0.8.0.",
     "Optional: pokeball_colors, on BOTH generations. Gen 1: this mod owns its ball records AND their colors, and registers them on game.ready; Pokeball Colors must not carry entries for these ids.",
-    "Gold: this mod owns the THROW colour (its own battleObjects palettes plus a BattleState:ballPalette wrap) and Pokeball Colors 0.1.22+ owns the POKEMON CENTER heal machine, reading each ball's colour back out of ballPalette/battleObjects and the mon.caughtBall mark. The two do not overlap. Other ball mods should call exports.registerBallPalette(ballId, paletteName, row) instead of adding a second wrap; that also gets them onto the heal machine. Gold's native MOON and FAST BALL colours are left alone.",
-    "Optional: Custom Poke Balls intentionally owns QUICK/TIMER/NET/DUSK/REPEAT/DREAM/DIVE on Gen 1. Too Many Balls owns those ids on Gold unless a Gold build of Custom Poke Balls is loaded or CANON BALL SET is off. Turning the set off while holding one leaves a raw item in ITEMS until re-enabled. Gold option changes currently need to be made from a Red boot to persist.",
+    "Gen 2: this mod owns the THROW colour (its own battleObjects palettes plus a BattleState:ballPalette wrap) and Pokeball Colors 0.1.22+ owns the POKEMON CENTER heal machine, reading each ball's colour back out of ballPalette/battleObjects and the mon.caughtBall mark. The two do not overlap. Other ball mods should call exports.registerBallPalette(ballId, paletteName, row) instead of adding a second wrap; that also gets them onto the heal machine. The native MOON and FAST BALL colours are left alone.",
+    "Optional: Custom Poke Balls intentionally owns QUICK/TIMER/NET/DUSK/REPEAT/DREAM/DIVE on Gen 1. Too Many Balls owns those ids on Gen 2 unless a Gen 2 build of Custom Poke Balls is loaded or CANON BALL SET is off. Turning the set off while holding one leaves a raw item in ITEMS until re-enabled. Gen 2 option changes currently need to be made from a Red boot to persist.",
     "Publishes exports.owns = { kanto_balls = true, balls = { ...ids... } } and exports.balls.",
   },
 }

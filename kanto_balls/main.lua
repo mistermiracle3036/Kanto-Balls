@@ -3,7 +3,7 @@
 -- players' save bags, in mon.caughtBall and in the zip name)
 --
 -- Custom balls for gen1recomp, on BOTH generations since 0.4.0: Red/
--- Blue/Yellow (Gen 1) and Gold (Gen 2).  This mod is also meant to be
+-- Blue/Yellow (Gen 1) and Gold/Silver/Crystal (Gen 2). This mod is also meant to be
 -- READABLE: each ball is one self-contained pattern with the engine
 -- file/line it was verified against (Gen 1 paths against engine 0.1.75,
 -- Gen 2 paths against 0.1.78), so it can be copied into your own mod
@@ -77,7 +77,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.7.0"
+  local VERSION = "0.8.0"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -96,6 +96,18 @@ return function(mod)
   -- unconditionally so the static scan can follow where they go.
   local ItemEffects = require("src.inventory.ItemEffects")
   local Pokemon = require("src.pokemon.Pokemon")
+  local Screens = require("src.ui.Screens")
+  -- Chrome is a shared, stateless GB renderer despite its historical
+  -- gen2 path; its box/print/cursor helpers work in both engine lines.
+  local Chrome = require("src.ui.gen2.Chrome")
+  local ReviewBoxes
+  local ReviewMon
+  if GEN2 then
+    local Boxes2 = require("src.core.gen2.Boxes")
+    local Mon2 = require("src.battle.gen2.Mon")
+    ReviewBoxes = Boxes2
+    ReviewMon = Mon2
+  end
 
   ----------------------------------------------------------------------
   -- OPTIONS -- read at LOAD time, which is only legal because of the
@@ -128,7 +140,7 @@ return function(mod)
       label = "VANILLA BAG LIMITS", default = false },
     { key = "canon_balls", type = "toggle",
       label = "CANON BALL SET", default = true,
-      description = "Turn OFF if using Custom Poke Balls' Gold version." },
+      description = "Turn OFF if Custom Poke Balls owns these on Gen 2." },
   })
 
   -- Everything this flag changes -- prices, which balls exist, which
@@ -137,6 +149,9 @@ return function(mod)
   -- every entry chunk in Loader:load).  Nothing re-reads it later, so
   -- toggling the option takes effect only after a full quit and relaunch.
   local CHEAP = mod.options:get("cheap_balls") == true
+  -- Internal refunds are inventory mutations, not mart purchases. The
+  -- purchase detector checks this while its Bag.add wrapper is active.
+  local suppressPurchaseTracking = false
 
   -- The seven ids below belong to Custom Poke Balls on Gen 1.  On Gold
   -- they are ours only while that mod has no Gold build loaded and the
@@ -171,6 +186,9 @@ return function(mod)
     -- traded/imported one would fall to the ITEMS pocket (see 0.4.9).
     "SNARE_BALL", "CATALYST_BALL", "DRIFT_BALL", "KECLEON_BALL",
     "CRADLE_BALL", "ACE_BALL", "LUXURY_BALL", "CHERISH_BALL",
+    -- Story/artifact balls. They stay registered on every boot so quest
+    -- mods may grant them safely, but only the [DEV] shelf exposes them.
+    "CAGE_BALL", "CRYSTAL_BALL", "STRANGE_BALL", "ORIGIN_BALL",
   }
   if not GEN2 then
     BALL_IDS[#BALL_IDS + 1] = "MOON_BALL"
@@ -218,6 +236,7 @@ return function(mod)
   -- One wrap, one queue: wrapping Game2.update twice would make load
   -- order decide which drain ran first.
   local pendingCoda = nil
+  local pendingCrystal = {}
 
   local OWNED = {}
   for _, id in ipairs(BALL_IDS) do OWNED[id] = true end
@@ -299,7 +318,11 @@ return function(mod)
     -- Not a recipe: registered on both generations so an imported one
     -- stays a ball, but its only acquisition is Kurt's Gold-only gift.
     local GOLD_GIFT_ONLY = { CHERISH_BALL = true }
-    local DEV_ONLY = { GS_BALL = true, BEAST_BALL = true }
+    local DEV_ONLY = {
+      GS_BALL = true, BEAST_BALL = true,
+      CAGE_BALL = true, CRYSTAL_BALL = true,
+      STRANGE_BALL = true, ORIGIN_BALL = true,
+    }
     for _, id in ipairs(BALL_IDS) do
       local reachable = true
       if not GEN2 and CRAFT_ONLY[id] then reachable = false end
@@ -387,13 +410,13 @@ return function(mod)
     SILPH_BALL   = "A prototype ball.\nIt often breaks.",
     MOON_BALL    = "Good on those that\ntake a MOON STONE.",
     FAST_BALL    = "Good on very fast\nPOKeMON.",
-    GS_BALL      = "A curious ball.\nIt marks its catch.",
+    GS_BALL      = "A curious ball.\nIt marks a catch.",
     BEAST_BALL   = "Made for legends.\nPoor on all else.",
     SNARE_BALL   = "Holds a sleeping\nor frozen POKeMON.",
     CATALYST_BALL = "Good on those that\nevolve by stone.",
     DRIFT_BALL   = "Good on light and\nairy POKeMON.",
-    -- Was "Turns the colour of\nits target." -- that first line is 19
-    -- columns, one over, and it promised only the trick.  Now it leads
+    -- The old description's first line was 19 columns, one over, and it
+    -- promised only the trick. Now it leads
     -- with the odds, because that is what a player choosing a ball off
     -- this list needs to know first.
     KECLEON_BALL = "A good ball that\nmimics its target.",
@@ -408,6 +431,10 @@ return function(mod)
     REPEAT_BALL  = "Good on a species\nyou caught before.",
     DREAM_BALL   = "Best on a sleeping\nPOKeMON.",
     DIVE_BALL    = "Good while fishing\nor while surfing.",
+    CAGE_BALL    = "Each failed throw\ncloses its cage.",
+    CRYSTAL_BALL = "Inspect the catch.\nKeep it or let go.",
+    STRANGE_BALL = "Its catch strength\nvaries each throw.",
+    ORIGIN_BALL  = "Made for a single\nfateful encounter.",
   }
 
   ----------------------------------------------------------------------
@@ -530,7 +557,7 @@ return function(mod)
       local vanillaAdd = Bag._kbShopOriginals.add
       Bag.add = function(save, id, qty, data)
         local ok = vanillaAdd(save, id, qty, data)
-        if ok and not shop.emitting then
+        if ok and not shop.emitting and not suppressPurchaseTracking then
           shop.pending = { id = id, qty = qty or 1, save = save, data = data }
         end
         return ok
@@ -1262,6 +1289,63 @@ return function(mod)
   })
 
   ----------------------------------------------------------------------
+  -- STORY / ARTIFACT BALLS -- registered everywhere, obtainable only
+  -- from a quest or the [DEV] shelf.  Their ids are intentionally plain
+  -- contracts so a later quest mod can grant one without depending on
+  -- Too Many Balls' acquisition UI.
+  ----------------------------------------------------------------------
+  local cageFailures = setmetatable({}, { __mode = "k" })
+
+  registerBall("CAGE_BALL", "CAGE BALL", 0, {
+    tossAnim = "ULTRATOSS_ANIM",
+    attempt = function(ctx)
+      local failed = cageFailures[ctx.battle] or 0
+      if failed >= 2 then return true, 3 end
+      if failed == 1 then boost(ctx, 2) end
+      return ctx.vanillaAttempt()
+    end,
+  })
+
+  registerBall("CRYSTAL_BALL", "CRYSTAL BALL", 0, {})
+
+  local STRANGE_MULTS = { 0.75, 1, 1.5, 2 }
+  registerBall("STRANGE_BALL", "STRANGE BALL", 0, {
+    attempt = function(ctx)
+      -- The battle RNG is part of the catch attempt contract. Exactly
+      -- one draw per real throw keeps replays deterministic.
+      local index = ctx.rng(1, #STRANGE_MULTS)
+      boost(ctx, STRANGE_MULTS[index] or 1)
+      return ctx.vanillaAttempt()
+    end,
+  })
+
+  registerBall("ORIGIN_BALL", "ORIGIN BALL", 0, {
+    tossAnim = "ULTRATOSS_ANIM",
+    attempt = function() return true, 3 end,
+  })
+
+  mod.events:on("battle.ball_thrown", function(p)
+    if not (p and p.ball == "CAGE_BALL" and p.battle) then return end
+    if p.caught then
+      cageFailures[p.battle] = nil
+    else
+      cageFailures[p.battle] = (cageFailures[p.battle] or 0) + 1
+    end
+  end)
+
+  mod.events:on("battle.ended", function(p)
+    if p and p.battle then cageFailures[p.battle] = nil end
+  end)
+
+  mod.events:on("pokemon.caught", function(p)
+    if p and p.ball == "CRYSTAL_BALL" and p.mon and p.game then
+      pendingCrystal[#pendingCrystal + 1] = {
+        game = p.game, mon = p.mon, species = p.species,
+      }
+    end
+  end)
+
+  ----------------------------------------------------------------------
   -- GS BALL and BEAST BALL -- [DEV] CHEAP BALLS only.
   --
   -- Both are gated on the option because they are not earned content yet:
@@ -1519,6 +1603,23 @@ return function(mod)
           boostFlat(o, 4)
         end
 
+      elseif ball == "CAGE_BALL" then
+        local failed = cageFailures[o.battle] or 0
+        if failed >= 2 then return true, 255 end
+        if failed == 1 then boostFlat(o, 2) end
+
+      elseif ball == "STRANGE_BALL" then
+        -- Gold's battle RNG answers 0..n-1. Missing RNG must fail closed
+        -- to ordinary odds; never substitute love.math and desync a replay.
+        local mult = 1
+        if type(o.random) == "function" then
+          mult = STRANGE_MULTS[o.random(#STRANGE_MULTS) + 1] or 1
+        end
+        boostFlat(o, mult)
+
+      elseif ball == "ORIGIN_BALL" then
+        return true, 255
+
       elseif ball == "CRADLE_BALL" then
         -- Replace the roll outright.  Gold returns `caught,
         -- wFinalCatchRate`, and 255 drives the clean catch animation.
@@ -1613,9 +1714,258 @@ return function(mod)
         boostFlat(o, KECLEON_MULT)
       end
 
-      -- PREMIER, HEAL, LUXURY, CHERISH, GS: no rate code by design.
+      -- PREMIER, HEAL, LUXURY, CHERISH, CRYSTAL, GS: plain odds.
       return next_(ball, mon, def, o)
     end)
+  end
+
+  ----------------------------------------------------------------------
+  -- CRYSTAL BALL REVIEW -- the catch is stored by vanilla first, then a
+  -- quiet-frame screen shows the exact live record. RELEASE refunds the
+  -- ball before removing that exact identity; any failed check keeps the
+  -- Pokemon and reports visibly instead of guessing at a party/box slot.
+  ----------------------------------------------------------------------
+  local CrystalReview = {}
+  CrystalReview.__index = CrystalReview
+
+  local function fit(text, width)
+    text = tostring(text or "")
+    if #text <= width then return text end
+    return text:sub(1, width)
+  end
+
+  local function locateCaught(game, wanted)
+    local save = game and game.save
+    if not (save and wanted) then return nil, "save or catch missing" end
+    local hits = {}
+    for i, mon in ipairs(save.party or {}) do
+      if mon == wanted then
+        hits[#hits + 1] = { kind = "party", list = save.party, slot = i }
+      end
+    end
+
+    if GEN2 then
+      for boxIndex = 1, ReviewBoxes.NUM_BOXES do
+        local box = (save.boxes and save.boxes[boxIndex]) or {}
+        for slot, mon in ipairs(box) do
+          if mon == wanted then
+            hits[#hits + 1] = { kind = "box", list = box,
+              box = boxIndex, slot = slot }
+          end
+        end
+      end
+    else
+      for boxIndex, box in ipairs(save.boxes or {}) do
+        for slot, mon in ipairs(box) do
+          if mon == wanted then
+            hits[#hits + 1] = { kind = "box", list = box,
+              box = boxIndex, slot = slot }
+          end
+        end
+      end
+    end
+
+    if #hits ~= 1 then
+      return nil, ("catch identity found %d times"):format(#hits)
+    end
+    return hits[1]
+  end
+
+  local function releaseCaught(screen)
+    local game, mon = screen.game, screen.mon
+    local where, why = locateCaught(game, mon)
+    if not where then return false, why end
+    suppressPurchaseTracking = true
+    local addOk, refunded = pcall(Bag.add, game.save,
+      "CRYSTAL_BALL", 1, game.data)
+    suppressPurchaseTracking = false
+    if not addOk then return false, "refund error: " .. tostring(refunded) end
+    if not refunded then
+      return false, "BALL pocket full"
+    end
+
+    -- Revalidate after the refund and before the irreversible step.
+    if where.list[where.slot] ~= mon then
+      Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+      return false, "catch moved during review"
+    end
+
+    if GEN2 then
+      local ok, removed
+      if where.kind == "party" then
+        ok, removed = ReviewBoxes.releaseFromParty(game.save, where.slot)
+      else
+        ok, removed = ReviewBoxes.release(game.save, where.box, where.slot)
+      end
+      if not ok or removed ~= mon then
+        Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+        return false, "engine release refused exact catch"
+      end
+    else
+      local removed = table.remove(where.list, where.slot)
+      if removed ~= mon then
+        Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+        if removed then table.insert(where.list, where.slot, removed) end
+        return false, "release removed a different catch"
+      end
+    end
+    return true
+  end
+
+  local function speciesDef(screen)
+    local data = screen.game and screen.game.data
+    return data and data.pokemon and data.pokemon[screen.mon.species]
+  end
+
+  local function moveLine(screen, move)
+    if not move then return "-" end
+    if type(move) == "string" then move = { id = move } end
+    local data = screen.game and screen.game.data
+    local def = data and data.moves and data.moves[move.id]
+    local name = (def and def.name) or move.id or "-"
+    local pp = tonumber(move.pp) or 0
+    local maxPp = tonumber(move.maxPp)
+    if not maxPp then
+      local base = tonumber(def and def.pp) or 0
+      local ups = tonumber(move.ppUps) or 0
+      maxPp = base + ups * math.floor(base / 5)
+    end
+    return fit(name, 10) .. " " .. tostring(pp) .. "/" .. tostring(maxPp)
+  end
+
+  function CrystalReview.new(game, opts)
+    local record = opts and opts.record or {}
+    return setmetatable({
+      game = game, mon = record.mon or {}, page = 1, choice = 1,
+      armed = false, confirm = false, message = nil,
+    }, CrystalReview)
+  end
+
+  function CrystalReview:close()
+    if self.game and self.game.stack then self.game.stack:pop() end
+  end
+
+  function CrystalReview:update()
+    if not self.armed then self.armed = true return end
+    local input = self.game and self.game.input
+    local pressed = function(key)
+      return input and input.wasPressed and input:wasPressed(key)
+    end
+    if self.message then
+      if pressed("a") or pressed("b") then self:close() end
+      return
+    end
+    if self.confirm then
+      if pressed("b") then self.confirm = false return end
+      if pressed("a") then
+        local ok, why = releaseCaught(self)
+        if ok then
+          self.message = { "Ball returned.", "POKEMON released." }
+        else
+          Runtime.reportError("kanto_balls",
+            "CRYSTAL release: " .. tostring(why))
+          self.message = { "Release failed.", "POKEMON kept." }
+        end
+      end
+      return
+    end
+    if pressed("left") or pressed("right") then
+      self.page = self.page == 1 and 2 or 1
+    elseif pressed("up") or pressed("down") then
+      self.choice = self.choice == 1 and 2 or 1
+    elseif pressed("b") then
+      self:close()
+    elseif pressed("a") then
+      if self.choice == 1 then self:close() else self.confirm = true end
+    end
+  end
+
+  function CrystalReview:draw()
+    Chrome.box(0, 0, 20, 18)
+    Chrome.print("CRYSTAL VIEW", 1, 1)
+    local mon = self.mon or {}
+    local def = speciesDef(self) or {}
+    if self.page == 1 then
+      Chrome.print(fit(mon.nickname or def.name or mon.species, 18), 1, 3)
+      Chrome.print(fit(def.name or mon.species, 11)
+        .. " Lv" .. tostring(mon.level or 0), 1, 4)
+      if GEN2 then
+        local traits = {}
+        if mon.shiny == true or ReviewMon.vanillaShiny(mon.dvs or {}) then
+          traits[#traits + 1] = "SHINY"
+        end
+        local gender = mon.gender
+          or ReviewMon.vanillaGender(def, mon.dvs or {})
+        if gender and gender ~= "unknown" then
+          traits[#traits + 1] = tostring(gender):upper()
+        end
+        Chrome.print(fit(table.concat(traits, " "), 18), 1, 5)
+      end
+      local d = mon.dvs or {}
+      Chrome.print("DVs", 1, 7)
+      Chrome.print(("HP %02d AT %02d"):format(d.hp or 0, d.attack or 0), 1, 8)
+      Chrome.print(("DF %02d SP %02d"):format(d.defense or 0, d.speed or 0), 1, 9)
+      Chrome.print(("SC %02d"):format(d.special or 0), 1, 10)
+      Chrome.print("< MOVES >", 1, 12)
+    else
+      Chrome.print("MOVES / PP", 1, 3)
+      for i = 1, 4 do
+        Chrome.print(moveLine(self, mon.moves and mon.moves[i]), 1, 3 + i)
+      end
+      Chrome.print("< DETAILS >", 1, 12)
+    end
+    Chrome.print("KEEP", 3, 14)
+    Chrome.print("RELEASE", 3, 15)
+    Chrome.cursor(1, self.choice == 1 and 14 or 15)
+
+    if self.confirm then
+      Chrome.box(1, 5, 18, 6)
+      Chrome.print("Release it?", 2, 6)
+      Chrome.print("A:YES  B:NO", 2, 8)
+    elseif self.message then
+      Chrome.box(1, 5, 18, 6)
+      Chrome.print(self.message[1], 2, 6)
+      Chrome.print(self.message[2], 2, 8)
+    end
+  end
+
+  mod.content.screens:register("KbCrystalReview", { new = CrystalReview.new })
+
+  local crystalPushFailed = false
+  local function pushPendingCrystal(game)
+    local record = pendingCrystal[1]
+    if not record or record.game ~= game or crystalPushFailed then return false end
+    local ok, err = pcall(Screens.push, game, "KbCrystalReview",
+      { record = record })
+    if not ok then
+      crystalPushFailed = true
+      Runtime.reportError("kanto_balls", "CRYSTAL screen: " .. tostring(err))
+      return false
+    end
+    table.remove(pendingCrystal, 1)
+    return true
+  end
+
+  local function gen1Quiet(game)
+    local ow = game and game.overworld
+    if not (ow and game.stack and game.stack.top
+        and game.stack:top() == ow) then return false end
+    if ow.transitioning or ow.engaging or ow.emote then return false end
+    if ow.scriptMoves and #ow.scriptMoves > 0 then return false end
+    if ow.runner and ow.runner.isRunning and ow.runner:isRunning() then
+      return false
+    end
+    return true
+  end
+
+  if not GEN2 then
+    local Game = require("src.core.Game")
+    Game._kbOriginals = Game._kbOriginals or { update = Game.update }
+    local vanillaGameUpdate = Game._kbOriginals.update
+    Game.update = function(self, dt)
+      vanillaGameUpdate(self, dt)
+      if gen1Quiet(self) then pushPendingCrystal(self) end
+    end
   end
 
   ----------------------------------------------------------------------
@@ -1646,12 +1996,16 @@ return function(mod)
     end
   end
 
-  -- [DEV] CHEAP BALLS puts the two dev balls on every ball shelf. With
-  -- the flag off they were never registered above, so there is nothing to
-  -- append and no shelf mentions them.
+  -- [DEV] CHEAP BALLS exposes the development and quest-artifact balls.
+  -- They remain registered with the flag off, but no ordinary shelf,
+  -- recipe or gift can produce them.
   if CHEAP then
     SHELF[#SHELF + 1] = "GS_BALL"
     SHELF[#SHELF + 1] = "BEAST_BALL"
+    SHELF[#SHELF + 1] = "CAGE_BALL"
+    SHELF[#SHELF + 1] = "CRYSTAL_BALL"
+    SHELF[#SHELF + 1] = "STRANGE_BALL"
+    SHELF[#SHELF + 1] = "ORIGIN_BALL"
   end
 
   if not GEN2 then
@@ -1750,7 +2104,7 @@ return function(mod)
       if type(lists) ~= "table" then
         -- never fail silently: no mart table means no shelves, and the
         -- player would otherwise just see vanilla marts with no clue
-        Runtime.reportError("kanto_balls", "GOLD: mart table missing")
+        Runtime.reportError("kanto_balls", "GEN2: mart table missing")
         return
       end
 
@@ -1774,7 +2128,7 @@ return function(mod)
         end
       end
       if not stocked then
-        Runtime.reportError("kanto_balls", "GOLD: no ball shelf found")
+        Runtime.reportError("kanto_balls", "GEN2: no ball shelf found")
       end
     end)
   end
@@ -2276,6 +2630,18 @@ return function(mod)
         end
       end
 
+      -- A caught Pokemon has already passed through nickname/party/box
+      -- flow by the time the world is quiet. Gen 2 has no overworld state
+      -- on the stack during ordinary play, so an empty stack plus the
+      -- engine's own World:busy() guard is the safe review seam.
+      local crystalWorld = self.world
+      local crystalStack = self.stack
+      local crystalQuiet = self.phase == "play"
+        and crystalWorld and crystalWorld.map
+        and crystalWorld.busy and not crystalWorld:busy()
+        and crystalStack and crystalStack.top and crystalStack:top() == nil
+      if crystalQuiet and pushPendingCrystal(self) then return end
+
       if not pendingCase then return end
       pendingCase = false
       local ok, err = pcall(Screens.push, self, "KbBallCase")
@@ -2309,19 +2675,35 @@ return function(mod)
   -- and Gen 2 flags are numeric-only, so "the well is done" is not
   -- readable by name.  Reading the conversation instead needs no flag.
   --
-  -- TODO/CONFIRM on device: that KURT_SCRIPT is KURT and not his
-  -- granddaughter.  It came off the 0.4.13 probe (map 8:4 =
-  -- KURTS_HOUSE, object 2) and the house holds more than one person --
-  -- though the 0.4.19 probe run makes this near-certain, since the
-  -- script it captured walks object 2 out of the house and later hands
-  -- over an item, which is Kurt's part and nobody else's.
+  -- Kurt's script pool differs between Gold/Silver and Crystal, so the
+  -- identity is resolved from the running game's KURTS_HOUSE object data
+  -- rather than baking in a key observed on one ROM lineage.
   ----------------------------------------------------------------------
   if GEN2 then
-    -- ROM-derived, read from the running game with the 0.4.13 probe and
-    -- never guessed.  If Gold's script pool is ever re-walked this may
-    -- move, so the handover reports to [ERRS] when it fires rather than
-    -- being invisible either way.
-    local KURT_SCRIPT = "55:45e3"
+    local KURT_SCRIPT = nil
+    local kurtIdentityReported = false
+
+    mod.events:on("game.ready", function(p)
+      KURT_SCRIPT = nil
+      local maps = p and p.game and p.game.data and p.game.data.gen2Maps
+      local house = maps and maps.KURTS_HOUSE
+      local matches = {}
+      for _, obj in pairs((house and house.objects) or {}) do
+        if obj and obj.sprite == "SPRITE_KURT"
+            and type(obj.scriptKey) == "string" and obj.scriptKey ~= "" then
+          matches[#matches + 1] = obj.scriptKey
+        end
+      end
+      if #matches == 1 then
+        KURT_SCRIPT = matches[1]
+        return
+      end
+      if not kurtIdentityReported then
+        kurtIdentityReported = true
+        Runtime.reportError("kanto_balls",
+          ("KURT identity: found %d candidates"):format(#matches))
+      end
+    end)
 
     -- WHEN THIS FIRES: the conversation in which KURT GIVES YOU
     -- SOMETHING.  That is the rescue conversation -- he hands over a
@@ -2365,7 +2747,9 @@ return function(mod)
     mod.events:on("script.started", function(p)
       local ctx = p and p.ctx
       kurtBag = nil
-      if not (ctx and ctx.scriptKey == KURT_SCRIPT) then return end
+      if not (KURT_SCRIPT and ctx and ctx.scriptKey == KURT_SCRIPT) then
+        return
+      end
       if mod.save:get("caseGiven") then return end
       local save = mod.game and mod.game.save
       local inv = save and save.inventory
@@ -2379,7 +2763,9 @@ return function(mod)
       local ctx = p and p.ctx
       local snap = kurtBag
       kurtBag = nil
-      if not (ctx and ctx.scriptKey == KURT_SCRIPT) then return end
+      if not (KURT_SCRIPT and ctx and ctx.scriptKey == KURT_SCRIPT) then
+        return
+      end
       if not p.completed then return end
       if not snap then return end
       if mod.save:get("caseGiven") then return end
@@ -2503,6 +2889,10 @@ return function(mod)
     -- First-pass canon colours. TODO/CONFIRM each on a real device throw.
     LUXURY_BALL  = { body = {  32,  32,  40 }, accent = { 232, 192,  64 } },
     CHERISH_BALL = { body = { 224,  48,  56 }, accent = {  88,  24,  40 } },
+    CAGE_BALL    = { body = {  48,  56,  72 }, accent = {  72, 208, 224 } },
+    CRYSTAL_BALL = { body = { 176, 224, 248 }, accent = { 248, 252, 255 } },
+    STRANGE_BALL = { body = { 160, 224, 176 }, accent = {  48, 152, 152 } },
+    ORIGIN_BALL  = { body = { 208,  48,  48 }, accent = { 240, 192,  64 } },
   }
   if not GEN2 then
     COLORS.MOON_BALL = { body = {  60,  68, 128 }, accent = { 232, 208,  96 } }
@@ -2632,6 +3022,10 @@ return function(mod)
     -- TODO/CONFIRM both on a real Gold throw.
     PAL_KB_LUXURY  = { {255,255,255}, {232,192, 64}, { 32, 32, 40}, {24,24,24} },
     PAL_KB_CHERISH = { {255,255,255}, {248,128,128}, {224, 48, 56}, {24,24,24} },
+    PAL_KB_CAGE    = { {255,255,255}, { 72,208,224}, { 48, 56, 72}, {24,24,24} },
+    PAL_KB_CRYSTAL = { {255,255,255}, {248,252,255}, {176,224,248}, {24,24,24} },
+    PAL_KB_STRANGE = { {255,255,255}, {160,224,176}, { 48,152,152}, {24,24,24} },
+    PAL_KB_ORIGIN  = { {255,255,255}, {240,192, 64}, {208, 48, 48}, {24,24,24} },
   }
   if CANON_BALLS then
     -- First-pass canon rows. TODO/CONFIRM every one on a real Gold throw.
@@ -2668,6 +3062,10 @@ return function(mod)
     ACE_BALL     = "PAL_KB_ACE",
     LUXURY_BALL  = "PAL_KB_LUXURY",
     CHERISH_BALL = "PAL_KB_CHERISH",
+    CAGE_BALL    = "PAL_KB_CAGE",
+    CRYSTAL_BALL = "PAL_KB_CRYSTAL",
+    STRANGE_BALL = "PAL_KB_STRANGE",
+    ORIGIN_BALL  = "PAL_KB_ORIGIN",
   }
   if CANON_BALLS then
     BALL_PALETTES.QUICK_BALL  = "PAL_KB_QUICK"

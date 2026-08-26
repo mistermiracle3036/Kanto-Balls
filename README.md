@@ -1,7 +1,7 @@
 # Too Many Balls
 
 **New Poké Balls for gen1recomp** — on Red / Blue / Yellow **and Pokémon
-Gold** since 0.4.0 — sold on real mart shelves, and on Gold made by hand
+Gold / Silver / Crystal** — sold on real mart shelves, and in Johto made by hand
 out of Apricorns.
 
 *(Called **Kanto Balls** until 0.4.3. Renamed once the balls reached
@@ -39,7 +39,7 @@ A failed throw is not a miss, and it does not pretend to be one:
 
 <img src="docs/silph-broke.png" width="360" alt="Battle text reading: The PROTOTYPE broke apart!">
 
-## On Pokémon Gold, Kurt teaches you to make your own
+## In Gold, Silver and Crystal, Kurt teaches you to make your own
 
 Most of the balls above travel to Johto — Premier, Nest, Heal, Mirror and
 the prototype (labelled **PROTO BALL** there, since Silph Co doesn't
@@ -116,9 +116,25 @@ safe. Kurt's own seven recipes are untouched.
 </tr>
 </table>
 
+## Four balls waiting for quests
+
+Version 0.8.0 prepares four story artifacts without placing them in normal
+play. **[DEV] CHEAP BALLS** puts them on test shelves for ₽1:
+
+- **CAGE BALL** — 1×, then 2× after one failed Cage throw, then guaranteed
+  after two failures in the same battle.
+- **CRYSTAL BALL** — normal odds, then a details-and-moves review of the
+  exact catch. KEEP is default. Confirmed RELEASE returns the ball first and
+  permanently removes only that exact new party or box record.
+- **STRANGE BALL** — randomly 0.75×, 1×, 1.5× or 2× each throw.
+- **ORIGIN BALL** — a guaranteed wild catch for one fateful encounter.
+
+Their records, descriptions and colours are registered on both generations
+so future quest mods can award them safely.
+
 ## One download
 
-**[kanto_balls](kanto_balls/)** is the whole mod — all fourteen balls and
+**[kanto_balls](kanto_balls/)** is the whole mod — the complete collection and
 the BALL CASE, with no dependencies.
 
 It used to ship alongside a small library mod, **shop_events**, which
@@ -148,7 +164,7 @@ palette rather than maths, and one that rewrites the caught Pokémon after
 the fact. Each one is commented with the engine file and line it was
 verified against.
 
-The Gold side is the same idea for the Gen 2 seams: one `catch.rate` wrap
+The Gold/Silver/Crystal side is the same idea for the Gen 2 seams: one `catch.rate` wrap
 carrying every ball, the `pocket` stamp, a presence-checked mart append,
 a key item that opens a mod-owned screen, and an NPC handover driven off
 script events — each with a note on why the Gen 1 mechanism doesn't reach
@@ -179,7 +195,7 @@ registering overlapping balls.
 - **[Pokeball Colors](https://github.com/mistermiracle3036/Pokeball-Colors)** —
   optional, and it works on **both** games. On Red/Blue/Yellow every ball
   registers its own colors, so each has its own look during the throw. On
-  Gold the throw is already coloured by this mod, and Colors adds the
+  Gold/Silver/Crystal the throw is already coloured by this mod, and Colors adds the
   **Pokémon Center heal machine**: each party slot shows the ball its
   Pokémon was caught in, taken from the same palettes registered here.
 

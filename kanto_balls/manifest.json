@@ -1,7 +1,7 @@
 {
   "id": "kanto_balls",
   "name": "Too Many Balls",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -15,5 +15,5 @@
   "optional_dependencies": ["pokeball_colors", "custom_pokeballs"],
   "conflicts": ["example_balls"],
   "github": "mistermiracle3036/Too-Many-Balls",
-  "description": "Custom Poke Balls for Red/Blue/Yellow and Gold, including a Gold-only canon set with Quick, Timer, Net, Dusk, Repeat, Dream and Dive Balls. Luxury is sold in both generations; Kurt gives a Cherish Ball with the Gold Ball Case. Every Gold mart entry includes a short effect description."
+  "description": "Custom Poke Balls for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.0 adds Cage, Crystal, Strange and Origin Balls for quests and expands every Gen 2 feature and mart description across all three games."
 }

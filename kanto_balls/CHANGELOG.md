@@ -10,6 +10,39 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.0
+
+**Updating from 0.6.1?** The complete 0.7 canon-ball set is included,
+and Too Many Balls now supports Gold, Silver and Crystal rather than Gold
+alone. Four quest-artifact balls are also ready for stories to award; they
+remain hidden in normal play and appear only with **[DEV] CHEAP BALLS**.
+
+- **Cage Ball:** inspired by Lawrence III's spiked cages. Its first throw
+  has normal odds, the second is 2× after one failed Cage Ball, and the
+  third is guaranteed after two failures in the same battle.
+- **Crystal Ball:** catches at normal odds, then opens a two-page review of
+  the exact catch with species, level, DVs, moves and PP. KEEP is the safe
+  default. RELEASE requires a second confirmation, returns the Crystal Ball
+  first, and removes only the exact newly caught party/box record. If the
+  refund or identity check fails, the Pokémon is kept and the error appears
+  in [ERRS].
+- **Strange Ball:** chooses 0.75×, 1×, 1.5× or 2× independently on each
+  real throw using the battle's own deterministic RNG.
+- **Origin Ball:** a guaranteed wild catch, intended for a single fateful
+  quest encounter.
+- The four artifact balls are registered, described and coloured on both
+  generations so quest mods can safely grant them, but have no ordinary
+  shelf, recipe or unlock. **[DEV] CHEAP BALLS** puts them on test shelves
+  for ¥1.
+- **Gold, Silver and Crystal now share the full feature set:** mart shelves,
+  descriptions, ball pockets, colours, catch behavior, BALL CASE and Kurt's
+  gift. Kurt is identified from each running game's map data instead of a
+  Gold-only script key; missing or ambiguous identity reports visibly.
+- The headless runtime suite now runs 1,000+ checks, including explicit
+  Gold/Silver/Crystal fixtures, every artifact catch outcome, Crystal Ball
+  party and box release, cancellation, full-pocket failure, duplicate
+  identity protection and quiet-frame screen timing.
+
 ## 0.7.0
 
 **Updating from 0.6.1?** Gold gets seven familiar later-generation balls,
