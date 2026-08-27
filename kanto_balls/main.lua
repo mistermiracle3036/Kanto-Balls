@@ -22,10 +22,11 @@
 --
 -- Two more are registered but never sold without the [DEV] CHEAP BALLS
 -- option, which also drops every price to 1.  They are not earned
--- content yet -- but they DO exist on every boot, so one obtained under
--- the flag keeps its pocket, its name and its behaviour after the flag
--- goes off (0.4.9; before that, gating the registration orphaned them
--- into the ITEMS pocket):
+-- content yet. BEAST exists on every boot; the throwable GS record exists
+-- everywhere except Crystal, where the cart owns GS_BALL as a story key
+-- item. Outside Crystal, one obtained under the flag keeps its pocket, its
+-- name and its behaviour after the flag goes off (0.4.9; before that,
+-- gating the registration orphaned it into the ITEMS pocket):
 --
 --   GS       no attempt() at all -- the reward is the persisted MARK
 --            (mon.caughtBall), which kanto_ribbons reads
@@ -77,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.0"
+  local VERSION = "0.8.1"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -87,6 +88,20 @@ return function(mod)
   -- generation check beats capability detection.
   local GameVersion = require("src.core.GameVersion")
   local GEN2 = GameVersion.generation() == 2
+  -- Crystal already owns GS_BALL as the story key item used by the
+  -- Goldenrod/Ilex Forest Celebi quest (rom_manifest_crystal.json and
+  -- tests/gen2_crystal_story_test.lua). Registering our throwable record
+  -- under that same id collides with the cart item before the mod can load;
+  -- overriding or pocket-stamping it would instead break the story. Gold,
+  -- Silver and every Gen 1 game have no such native record.
+  -- Test the data capability rather than the edition name: Game2 fills
+  -- game.data.items before mods:load(game.data) (Game2.lua:930-995), and
+  -- Crystal is currently the only supported cart whose item table contains
+  -- this id. This also remains correct if another edition gains the story
+  -- item later.
+  local activeItems = mod.game and mod.game.data and mod.game.data.items
+  local NATIVE_GS_BALL = GEN2
+    and activeItems and activeItems.GS_BALL ~= nil or false
 
   local Bag = require("src.inventory.Bag")
   local Runtime = require("src.mods.Runtime")
@@ -202,8 +217,9 @@ return function(mod)
       BALL_IDS[#BALL_IDS + 1] = id
     end
   end
-  -- GS and BEAST are ALWAYS registered, and only their SHELVES are gated
-  -- on the dev flag.  Through 0.4.8 the registration itself was gated,
+  -- BEAST is always registered. The throwable GS record is too except on
+  -- Crystal, where the cart's story key item owns the id. Only their
+  -- SHELVES are gated on the dev flag. Through 0.4.8 registration was gated,
   -- which had a bug the developer hit on device: a player who obtained
   -- one under [DEV] CHEAP BALLS and then turned the flag off still had
   -- the item in the save, but with no record registered `Bag.pocketOf`
@@ -215,7 +231,9 @@ return function(mod)
   -- and nothing in the game enumerates the item catalogue at a player.
   -- So they exist, keep their pocket and their name, and stay
   -- unobtainable.
-  BALL_IDS[#BALL_IDS + 1] = "GS_BALL"
+  if not NATIVE_GS_BALL then
+    BALL_IDS[#BALL_IDS + 1] = "GS_BALL"
+  end
   BALL_IDS[#BALL_IDS + 1] = "BEAST_BALL"
   -- Declared HERE, not down beside the Ball Case block that uses it most:
   -- the game.ready pocket stamp below runs earlier in the file, and a
@@ -303,10 +321,11 @@ return function(mod)
   -- is 0.4.7 and the wrap arrived in 0.4.8.
   --
   -- Counting the obtainable set instead: 8 on Red (seven shelf balls plus
-  -- PREMIER), 20 on Gold with the canon set active, +2 on either under
-  -- [DEV] CHEAP BALLS.  The Gold arithmetic is the old 11 + LUXURY +
+  -- PREMIER), 20 on Gen 2 with the canon set active, +6 under [DEV] CHEAP
+  -- BALLS (+5 on Crystal, where its native story GS Ball is not ours).
+  -- The Gold/Silver arithmetic is the old 11 + LUXURY +
   -- CHERISH + the seven canon balls = 20.  If the toggle or the
-  -- custom_pokeballs defer removes those seven, Gold asks for 13 instead.
+  -- custom_pokeballs defer removes those seven, Gen 2 asks for 13 instead.
   local ballSlots = 0
   do
     -- Craft-tier balls exist on Gen 1 so a traded one keeps its pocket
@@ -1388,10 +1407,11 @@ return function(mod)
   local LEGENDARY_SET = 255
   local BEAST_PENALTY = 0.2
 
-  -- Registered unconditionally; only the mart shelves below are gated on
-  -- the dev flag (see the BALL_IDS note above for the pocket bug that
-  -- gating the registration caused).  Under the flag `registerBall` also
-  -- drops the price to 1, so "cheap" still means cheap.
+  -- BEAST is registered unconditionally; GS is registered everywhere but
+  -- Crystal. Only the mart shelves below are gated on the dev flag (see the
+  -- BALL_IDS note above for the pocket bug that gating the registration
+  -- caused). Under the flag `registerBall` also drops the price to 1, so
+  -- "cheap" still means cheap.
   --
   -- GS BALL -- deliberately the most boring ball in the mod: no
   -- attempt() at all, so it catches exactly like a Poke Ball.  The
@@ -1400,7 +1420,9 @@ return function(mod)
   -- logic belongs in kanto_ribbons; this mod's whole job is to exist
   -- and be catchable with.  (And yes, taking the GS BALL to Gold is
   -- the joke finally landing.)
-  registerBall("GS_BALL", "GS BALL", 200, {})
+  if not NATIVE_GS_BALL then
+    registerBall("GS_BALL", "GS BALL", 200, {})
+  end
 
   -- boost() above only ever multiplies up, so it can leave the rate
   -- fractional when handed a value below 1.  A penalty needs its own
@@ -2000,7 +2022,9 @@ return function(mod)
   -- They remain registered with the flag off, but no ordinary shelf,
   -- recipe or gift can produce them.
   if CHEAP then
-    SHELF[#SHELF + 1] = "GS_BALL"
+    -- Crystal's GS_BALL is a native story key item, not this mod's
+    -- throwable test ball. Never sell or move that record to BALLS.
+    if not NATIVE_GS_BALL then SHELF[#SHELF + 1] = "GS_BALL" end
     SHELF[#SHELF + 1] = "BEAST_BALL"
     SHELF[#SHELF + 1] = "CAGE_BALL"
     SHELF[#SHELF + 1] = "CRYSTAL_BALL"
@@ -2909,16 +2933,19 @@ return function(mod)
     COLORS.DIVE_BALL   = { body = { 64,136,216 }, accent = { 176,224,248 } }
   end
 
-  -- GS and BEAST are registered on every boot now, so their colours are
-  -- too: Pokeball Colors 0.1.13+ warns about a registered ball carrying
-  -- no colour, and a ball held from an earlier dev session should look
-  -- like itself whether or not the flag is on today.
+  -- BEAST is registered on every boot, and GS is registered everywhere
+  -- except Crystal, whose native story item owns that id. Their colours
+  -- follow the same ownership boundary: Pokeball Colors 0.1.13+ warns
+  -- about a registered ball carrying no colour, but we must not claim a
+  -- colour for an item that belongs to the cart.
   do
     -- GS: the gold-and-silver ball, so gold body against a silver band.
     -- pale gold against silver.  The old 224,188,76 was 2.2 dE from
     -- Custom Poke Balls' LEVEL BALL and 14.6 from the native ULTRA --
     -- lifting the value clears both, and reads more "gold AND silver".
-    COLORS.GS_BALL = { body = { 248, 224, 160 }, accent = { 216, 220, 228 } }
+    if not NATIVE_GS_BALL then
+      COLORS.GS_BALL = { body = { 248, 224, 160 }, accent = { 216, 220, 228 } }
+    end
     -- BEAST: Ultra Beast livery -- deep blue with the yellow flash.
     -- near-black navy under the yellow flash.  At 44,72,148 it was 10.2
     -- dE from our own MOON BALL and crowded GREAT and SILPH too; dropping
@@ -3083,11 +3110,13 @@ return function(mod)
     -- palette set does not have.  So: a real saturated gold on pal2, with
     -- the silver as the lighter tone above it, which is the "gold AND
     -- silver" reading the ball is named for.
-    BALL_PALETTE_ROWS.PAL_KB_GS =
-      { {255,255,255}, {232,236,240}, {224,168, 32}, {24,24,24} }
+    if not NATIVE_GS_BALL then
+      BALL_PALETTE_ROWS.PAL_KB_GS =
+        { {255,255,255}, {232,236,240}, {224,168, 32}, {24,24,24} }
+    end
     BALL_PALETTE_ROWS.PAL_KB_BEAST =
       { {255,255,255}, {244,216, 72}, { 16, 24, 56}, {24,24,24} }
-    BALL_PALETTES.GS_BALL = "PAL_KB_GS"
+    if not NATIVE_GS_BALL then BALL_PALETTES.GS_BALL = "PAL_KB_GS" end
     BALL_PALETTES.BEAST_BALL = "PAL_KB_BEAST"
   end
 

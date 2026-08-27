@@ -151,6 +151,14 @@ local function makeModApi(options, foundMods)
     local store = rec.registries[name]
     return {
       register = function(_, id, value)
+        -- Registry:register rejects a record already supplied by the cart.
+        -- Use the live pre-entry item table model so Crystal's native
+        -- GS_BALL reproduces the exact 0.8.0 startup failure.
+        local base = name == "items" and rec.modGame
+          and rec.modGame.data and rec.modGame.data.items
+        if base and base[id] ~= nil then
+          error(("%s already registered: %s"):format(name, id))
+        end
         if name == "screens" then rec.screens[id] = value end
         store[id] = value
       end,
@@ -256,6 +264,17 @@ local function loadMod(generation, options, foundMods, versionId, engineLine)
   local chunk = assert(loadfile("main.lua"))
   local entry = chunk()
   local mod, rec = makeModApi(options, foundMods)
+  -- The real Game2 has already loaded cart items before it runs entry chunks.
+  -- Crystal alone owns GS_BALL as a native story key item; modelling that
+  -- base record is what makes this harness catch the 0.8.0 collision.
+  if generation == 2 then
+    rec.modGame = { data = { items = {} } }
+    if versionId == "crystal" then
+      rec.modGame.data.items.GS_BALL = {
+        id = "GS_BALL", name = "GS BALL", pocket = "KEY_ITEM",
+      }
+    end
+  end
   -- Runtime.emit was a no-op stub, which was fine while shop_events was a
   -- separate mod and this one only LISTENED. Now that the emit side lives
   -- here too, a no-op would let the whole purchase path "pass" while
@@ -1421,6 +1440,15 @@ for _, version in ipairs({
     version.id, version.engine)
   check(ok, label .. " entry chunk -> " .. tostring(err))
   if ok then
+    local items = rec.registries.items or {}
+    if version.id == "crystal" then
+      check(items.GS_BALL == nil,
+        label .. " replaced Crystal's native GS BALL story item")
+    else
+      check(items.GS_BALL ~= nil,
+        label .. " did not register the throwable GS BALL")
+    end
+
     local game = fakeGame(version.kurt)
     rec.modGame = game
     for id in pairs(rec.registries.items or {}) do
@@ -1451,6 +1479,14 @@ for _, version in ipairs({
     }) do
       check(stock[id], label .. " dev shelf lacks " .. id)
     end
+    check((stock.GS_BALL == true) == (version.id ~= "crystal"),
+      label .. " GS BALL shelf ownership is wrong")
+
+    local cap = rec.stubs["src.inventory.Bag"].capacity({}, "BALL")
+    local expected = version.id == "crystal" and 37 or 38
+    check(cap == expected,
+      ("%s dev headroom is %s, expected %d")
+        :format(label, tostring(cap), expected))
   end
 end
 

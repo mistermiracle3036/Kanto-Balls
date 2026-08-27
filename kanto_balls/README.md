@@ -161,10 +161,12 @@ creating a raw or unusable item.
 
 ## Other balls you won't normally see
 
-**GS BALL** and **BEAST BALL** exist but aren't obtainable in normal
-play; they're behind the *[DEV] CHEAP BALLS* option. They're still
-registered on every boot on purpose, so if you ever got one they stay in
-the BALLS pocket and look like themselves rather than turning into junk.
+**GS BALL** and **BEAST BALL** aren't obtainable in normal play; they're
+behind the *[DEV] CHEAP BALLS* option. Beast Ball is registered on every
+boot, and the throwable GS Ball is registered in Red, Blue, Yellow, Gold
+and Silver, so one you already hold stays usable. Crystal is the exception:
+its own GS Ball is a story key item, so Too Many Balls leaves that item and
+its Celebi quest untouched and does not put GS Ball on Crystal's test shelf.
 
 The **ACE BALL** is a case recipe that stays hidden until another mod
 teaches it — that hook is for [Route
@@ -262,8 +264,9 @@ automatically and updates in place.
 
 ## Options
 
-- **[DEV] CHEAP BALLS** — puts GS, Beast and the four quest-artifact balls
-  on every ball shelf and widens Gen 2 shelves to every mart. For testing.
+- **[DEV] CHEAP BALLS** — puts Beast and the four quest-artifact balls on
+  every ball shelf, plus GS Ball everywhere except Crystal, and widens Gen 2
+  shelves to every mart. For testing.
 - **VANILLA BAG LIMITS** — keeps Gen 2's stock twelve-kind ball pocket
   instead of growing it.
 - **CANON BALL SET** — Gen 2 only, on by default. Turn it off if a Gen 2

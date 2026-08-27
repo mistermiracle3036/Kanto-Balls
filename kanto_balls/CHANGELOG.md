@@ -10,6 +10,31 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.1
+
+**Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,
+four new quest-artifact balls, and the expanded Gold, Silver and Crystal
+support from 0.8.0. Cage, Crystal, Strange and Origin Balls remain hidden
+in normal play and appear for testing with **[DEV] CHEAP BALLS**.
+
+- **New in 0.8.1:** Too Many Balls now loads correctly in Crystal. Crystal
+  already owns `GS_BALL` as the story key item for its Celebi quest, so the
+  mod no longer tries to register, recolour or sell a second throwable item
+  under that ID there. The native GS Ball and its quest remain untouched.
+- The throwable Too Many Balls GS Ball remains available in Red, Blue,
+  Yellow, Gold and Silver, where no native item conflicts with it.
+- Added explicit Gold, Silver and Crystal regression checks for GS Ball
+  registration and development-shelf ownership.
+- Includes the nine-ball canon set from 0.7.0: Luxury and Cherish Balls on
+  both generations, plus Quick, Timer, Net, Dusk, Repeat, Dream and Dive
+  Balls on Gen 2 when **CANON BALL SET** is enabled.
+- Includes the 0.8.0 quest-artifact set: Cage Ball strengthens after failed
+  throws, Crystal Ball reviews and may safely release its exact catch,
+  Strange Ball rolls a different strength each throw, and Origin Ball is a
+  guaranteed wild catch for a single fateful encounter.
+- Gold, Silver and Crystal share mart descriptions, custom-ball pockets,
+  colours, catch behavior, the Ball Case and Kurt's gift.
+
 ## 0.8.0
 
 **Updating from 0.6.1?** The complete 0.7 canon-ball set is included,
