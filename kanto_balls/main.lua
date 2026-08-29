@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.3"
+  local VERSION = "0.8.4"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -2757,11 +2757,95 @@ return function(mod)
       return type(key) == "string" and KURT_SCRIPTS[key] == true
     end
 
+    ----------------------------------------------------------------------
+    -- THE RESCUE FLAG, and why the gate moved onto it at 0.8.4.
+    --
+    -- The probe answered it: identity resolved (n2, 63:6178 matched), the
+    -- snapshot survived, the conversation completed -- and the bag diff
+    -- said `!gift`, twice.  Kurt was giving nothing, because this save is
+    -- PAST the gift.  His script checks event 53 ("already handed over
+    -- the LURE BALL") before event 43 ("the well is done") and takes the
+    -- 53 branch, which gives nothing.
+    --
+    -- So "did he give me something" was never the condition.  It was a
+    -- proxy for "is this the return from Slowpoke Well", and it is a
+    -- proxy that expires: anyone who cleared the well before installing
+    -- this mod -- or while these three builds were broken -- can never
+    -- satisfy it.  The case would have been permanently unobtainable for
+    -- them, silently, which is exactly the shape of the bug this whole
+    -- chain has been.
+    --
+    -- The flag is the real condition.  It is set when the well is
+    -- cleared and stays set, so it is retroactive: the very next time
+    -- such a save talks to Kurt, the case arrives.
+    --
+    -- ITS NUMBER IS READ, NOT BAKED IN.  Gold and Crystal happen to
+    -- agree on 43 today, and that is worth nothing -- 0.8.0 baked in a
+    -- key on exactly that reasoning and this is round four of the same
+    -- mistake.  Instead, walk his own script for the `checkevent` whose
+    -- `iftrue` branch contains the give, and use whatever event that
+    -- names.  If the walk finds nothing the bag diff still stands as the
+    -- fallback, so a ROM shaped differently is no worse off than before.
+    local KURT_FLAG = nil
+
+    local function scriptGives(scripts, key, depth)
+      if type(key) ~= "string" or depth > 3 then return false end
+      local rows = scripts[key]
+      if type(rows) ~= "table" then return false end
+      for _, row in ipairs(rows) do
+        local op = row and row.op
+        if op == "verbosegiveitem" or op == "verbosegiveitemvar"
+            or op == "giveitem" then
+          return true
+        end
+        if (op == "iftrue" or op == "iffalse" or op == "sjump")
+            and scriptGives(scripts, row.script, depth + 1) then
+          return true
+        end
+      end
+      return false
+    end
+
+    local function findKurtFlag(scripts)
+      if type(scripts) ~= "table" then return nil end
+      for key in pairs(KURT_SCRIPTS) do
+        local rows = scripts[key]
+        if type(rows) == "table" then
+          local pending = nil
+          for _, row in ipairs(rows) do
+            local op = row and row.op
+            if op == "checkevent" then
+              pending = row.event
+            elseif op == "iftrue" then
+              if pending and scriptGives(scripts, row.script, 1) then
+                return pending
+              end
+              pending = nil
+            end
+          end
+        end
+      end
+      return nil
+    end
+
+    -- TRUE once the well is done.  A missing flag, a missing overworld or
+    -- a failed read all answer "no", which falls through to the bag diff
+    -- rather than handing the case out on a bad read.
+    local function rescueDone()
+      if not KURT_FLAG then return false end
+      local world = mod.world
+      if not world or not world.getFlag then return false end
+      local ok, value = pcall(world.getFlag, world, KURT_FLAG)
+      return ok and value == true
+    end
+
     mod.events:on("game.ready", function(p)
       KURT_SCRIPTS = {}
+      KURT_FLAG = nil
       local found = 0
       local firstKey = nil
-      local maps = p and p.game and p.game.data and p.game.data.gen2Maps
+      local data = p and p.game and p.game.data
+      local maps = data and data.gen2Maps
       local house = maps and maps.KURTS_HOUSE
       for _, obj in pairs((house and house.objects) or {}) do
         if obj and obj.sprite == "SPRITE_KURT"
@@ -2773,7 +2857,8 @@ return function(mod)
           KURT_SCRIPTS[obj.scriptKey] = true
         end
       end
-      probe(("KURT n%d %s %s"):format(found, tostring(firstKey),
+      KURT_FLAG = findKurtFlag(data and data.gen2Scripts)
+      probe(("KURT n%d f%s %s"):format(found, tostring(KURT_FLAG),
         mod.save:get("caseGiven") and "DONE" or "OPEN"))
       if found > 0 then return end
       if not kurtIdentityReported then
@@ -2858,24 +2943,32 @@ return function(mod)
       -- what made this cost two rounds: the failure and the fix look the
       -- same from the player's side, which is an empty pack either way.
       if not p.completed then return probe("E kurt !done") end
-      if not snap then return probe("E kurt !snap") end
       if mod.save:get("caseGiven") then return probe("E kurt given") end
 
       local game = mod.game
       local save = game and game.save
       if not save then return probe("E kurt !save") end
 
-      -- Did anything in the bag go UP during his conversation?  Checked
-      -- before we add the case ourselves, so our own gift cannot be the
-      -- thing that satisfies the test.
+      -- The flag answers on its own, so a missing snapshot is only fatal
+      -- on the fallback path.
+      local rescued = rescueDone()
+      if not rescued and not snap then return probe("E kurt !snap") end
+
+      -- FALLBACK: did anything in the bag go UP during his conversation?
+      -- Checked before we add the case ourselves, so our own gift cannot
+      -- be the thing that satisfies the test.
       local gained = false
       for id, n in pairs(save.inventory or {}) do
-        if type(n) == "number" and n > (snap[id] or 0) then
+        if type(n) == "number" and n > ((snap and snap[id]) or 0) then
           gained = true
           break
         end
       end
-      if not gained then return probe("E kurt !gift") end
+      -- EITHER answers "is this the return from the well". The flag is the
+      -- real condition and the one that works on a save already past the
+      -- gift; the bag diff stays as the fallback for a ROM whose script
+      -- the flag walk could not read.
+      if not (rescued or gained) then return probe("E kurt !gift") end
       -- Already carrying one (the dev shelf, or a previous save): mark
       -- it done rather than handing over a second.
       if (save.inventory and save.inventory[CASE_ID]) then

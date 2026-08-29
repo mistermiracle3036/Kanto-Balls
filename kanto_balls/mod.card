@@ -1,5 +1,5 @@
 return {
-  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.3 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
+  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.4 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
   author = "Mister Miracle",
   tags = { "balls", "items", "template", "gold", "crafting", "apricorns" },
   differences = {

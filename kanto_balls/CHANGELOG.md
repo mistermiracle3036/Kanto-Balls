@@ -10,6 +10,20 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.4
+
+Test build. The third and, on the evidence, the real fix.
+
+- **Fixed: Kurt only handed over the Ball Case if he happened to give you
+  something during that exact conversation.** He gives the Lure Ball once,
+  on your return from Slowpoke Well, and never again -- so any save that
+  cleared the well before installing this mod, or during the broken 0.8.0
+  to 0.8.3 builds, could never get the case at all. The case now depends
+  on the well being done, which the game remembers permanently. Talk to
+  Kurt once and it arrives, however long ago you rescued him.
+- He still gives nothing before the well is cleared.
+- The **[ERRS]** diagnostic from 0.8.3 is still on in this build.
+
 ## 0.8.3
 
 Test build. Kurt still did not hand over the Ball Case after 0.8.2, so

@@ -211,8 +211,12 @@ local function makeModApi(options, foundMods)
     daytime = "DAY",
     map = { def = { environment = "ROUTE" } },
   }
+  -- Gen 2 event flags, as WorldAPI:getFlag hands them over: numeric ids,
+  -- and an unset flag reads false rather than nil.
+  rec.flags = {}
   rec.defaultWorld = {
     overworld = function() return rec.worldLive end,
+    getFlag = function(_, id) return rec.flags[id] == true end,
     queueScript = function(_, rows)
       rec.queued[#rec.queued + 1] = rows
       return true
@@ -245,6 +249,30 @@ local function fakeGame(kurtKey, kurtKey2)
       items = {}, pokemon = {}, moves = {},
       gen2Marts = { lists = { { "POKE_BALL", "GREAT_BALL", "ULTRA_BALL" } } },
       gen2Palettes = { battleObjects = {} },
+      -- Kurt's script, in the shape both lineages really carry: check the
+      -- already-gifted flag, then the rescue flag, and the rescue branch
+      -- is the one holding verbosegiveitem. The mod reads the flag number
+      -- back out of this rather than baking in 43.
+      gen2Scripts = {
+        ["55:45e3"] = {
+          { op = "faceplayer" },
+          { op = "opentext" },
+          { op = "checkevent", event = 53 },
+          { op = "iftrue", script = "55:4637" },
+          { op = "checkevent", event = 43 },
+          { op = "iftrue", script = "55:462a" },
+          { op = "writetext", text = "55:47ee" },
+          { op = "end" },
+        },
+        ["55:4637"] = { { op = "writetext", text = "x" }, { op = "end" } },
+        ["55:462a"] = {
+          { op = "writetext", text = "y" },
+          { op = "promptbutton" },
+          { op = "verbosegiveitem", item = 160, quantity = 1 },
+          { op = "setevent", event = 53 },
+          { op = "end" },
+        },
+      },
       gen2Maps = { KURTS_HOUSE = { objects = {
         { index = 1, sprite = "SPRITE_KURT",
           scriptKey = kurtKey or "55:45e3" },
@@ -967,6 +995,55 @@ for _, gen in ipairs({ 1, 2 }) do
           end
           check(nested.save.inventory.BALL_CASE == 1,
             label .. " a nested script during Kurt's talk lost the snapshot")
+        end
+
+        -- A SAVE ALREADY PAST THE GIFT. Kurt hands over nothing, because
+        -- he handed the LURE BALL over before this mod was installed --
+        -- the device case that made 0.8.3 report `!gift` twice. The
+        -- rescue flag is set, so the case must still arrive.
+        local okR, errR, recR = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okR, label .. " retro entry chunk -> " .. tostring(errR))
+        if okR then
+          local retro = fakeGame()
+          recR.modGame = retro
+          recR.flags[43] = true
+          for _, fn in ipairs(recR.events["game.ready"] or {}) do
+            pcheck(label .. " retro ready", fn, { game = retro })
+          end
+          for _, fn in ipairs(recR.events["script.started"] or {}) do
+            pcheck(label .. " retro start", fn, { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(recR.events["script.ended"] or {}) do
+            pcheck(label .. " retro end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(retro.save.inventory.BALL_CASE == 1,
+            label .. " no case on a save already past Kurt's gift")
+        end
+
+        -- AND THE FLAG MUST NOT BE A FREE PASS. Same conversation, same
+        -- lack of a gift, flag clear: this is the pre-rescue Kurt and the
+        -- 0.4.14 bug if it awards.
+        local okP, errP, recP = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okP, label .. " pre-rescue entry chunk -> " .. tostring(errP))
+        if okP then
+          local pre = fakeGame()
+          recP.modGame = pre
+          for _, fn in ipairs(recP.events["game.ready"] or {}) do
+            pcheck(label .. " pre-rescue ready", fn, { game = pre })
+          end
+          for _, fn in ipairs(recP.events["script.started"] or {}) do
+            pcheck(label .. " pre-rescue start", fn,
+              { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(recP.events["script.ended"] or {}) do
+            pcheck(label .. " pre-rescue end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(pre.save.inventory.BALL_CASE == nil,
+            label .. " KURT GAVE THE CASE BEFORE THE WELL WAS CLEARED")
         end
 
         -- ...and only ever once, however many gifts follow.
