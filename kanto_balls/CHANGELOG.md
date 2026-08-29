@@ -10,6 +10,24 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.2
+
+**Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,
+four new quest-artifact balls, and support for Gold, Silver and Crystal
+alongside Red, Blue and Yellow. Cage, Crystal, Strange and Origin Balls
+remain hidden in normal play and appear for testing with **[DEV] CHEAP
+BALLS**.
+
+- **Fixed: Kurt never handed over the Ball Case.** In 0.8.0 and 0.8.1 he
+  said his piece on the way back from Slowpoke Well and gave you nothing,
+  in Gold and Silver as well as Crystal. Without the case there was no
+  Apricorn workbench and no Cherish Ball. He hands it over again now.
+  A save that already got past that conversation still works — talk to
+  him once more and the case arrives.
+- If you bought a Ball Case from the development shelf in the meantime,
+  Kurt notices and does not give you a second one.
+- Everything else below is unchanged from 0.8.1.
+
 ## 0.8.1
 
 **Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,

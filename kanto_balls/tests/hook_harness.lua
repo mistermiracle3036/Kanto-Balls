@@ -226,7 +226,14 @@ local function makeModApi(options, foundMods)
   return mod, rec
 end
 
-local function fakeGame(kurtKey)
+-- KURTS_HOUSE HOLDS TWO SPRITE_KURT OBJECTS, in every real Gen 2 game.
+-- This fixture used to carry one, which is exactly why the harness stayed
+-- green while 0.8.0/0.8.1 handed out no BALL CASE on any device: the
+-- resolver demanded a single candidate and every real ROM offers two.
+-- `kurtKey2` defaults to `kurtKey` because that is Gold and Silver's real
+-- shape (two objects, one shared key); Crystal passes a second, different
+-- key.
+local function fakeGame(kurtKey, kurtKey2)
   local states = {}
   local stack = {}
   function stack:top() return states[#states] end
@@ -239,8 +246,12 @@ local function fakeGame(kurtKey)
       gen2Marts = { lists = { { "POKE_BALL", "GREAT_BALL", "ULTRA_BALL" } } },
       gen2Palettes = { battleObjects = {} },
       gen2Maps = { KURTS_HOUSE = { objects = {
-        { sprite = "SPRITE_KURT", scriptKey = kurtKey or "55:45e3" },
-        { sprite = "SPRITE_TWIN", scriptKey = "not-kurt" },
+        { index = 1, sprite = "SPRITE_KURT",
+          scriptKey = kurtKey or "55:45e3" },
+        { index = 2, sprite = "SPRITE_TWIN", scriptKey = "not-kurt" },
+        { index = 3, sprite = "SPRITE_SLOWPOKE", scriptKey = "also-not-kurt" },
+        { index = 4, sprite = "SPRITE_KURT",
+          scriptKey = kurtKey2 or kurtKey or "55:45e3" },
       } } },
       text = {},
     },
@@ -1429,10 +1440,15 @@ end
 -- Gold, Silver and Crystal are explicit fixtures, with deliberately
 -- different Kurt keys. This proves the handoff follows live map identity
 -- instead of accidentally continuing to pass on Gold's historical key.
+--
+-- The `kurt2` values are the real second SPRITE_KURT object: Gold and
+-- Silver repeat the same key on both objects, Crystal does not. Both keys
+-- are taken from the imported map caches, not invented.
 for _, version in ipairs({
   { id = "gold", engine = "gs", kurt = "55:45e3" },
   { id = "silver", engine = "gs", kurt = "silver:kurt" },
-  { id = "crystal", engine = "crystal", kurt = "63:6178" },
+  { id = "crystal", engine = "crystal",
+    kurt = "63:6178", kurt2 = "63:63bd" },
 }) do
   local label = "gen2 " .. version.id
   local ok, err, rec = loadMod(2,
@@ -1449,7 +1465,7 @@ for _, version in ipairs({
         label .. " did not register the throwable GS BALL")
     end
 
-    local game = fakeGame(version.kurt)
+    local game = fakeGame(version.kurt, version.kurt2)
     rec.modGame = game
     for id in pairs(rec.registries.items or {}) do
       game.data.items[id] = { id = id, price = 1 }
@@ -1471,6 +1487,37 @@ for _, version in ipairs({
       label .. " did not resolve Kurt and award the BALL CASE")
     check(game.save.inventory.CHERISH_BALL == 1,
       label .. " did not award Kurt's CHERISH BALL")
+
+    -- The OTHER Kurt object must count too. On Crystal the two objects
+    -- run genuinely different scripts, so a resolver that quietly picks
+    -- one of them would still pass every check above.
+    if version.kurt2 then
+      local ok2, err2, rec2 = loadMod(2,
+        { cheap_balls = true, canon_balls = true }, nil,
+        version.id, version.engine)
+      check(ok2, label .. " second-Kurt entry chunk -> " .. tostring(err2))
+      if ok2 then
+        local g2 = fakeGame(version.kurt, version.kurt2)
+        rec2.modGame = g2
+        for id in pairs(rec2.registries.items or {}) do
+          g2.data.items[id] = { id = id, price = 1 }
+        end
+        for _, fn in ipairs(rec2.events["game.ready"] or {}) do
+          pcheck(label .. " second-Kurt ready", fn, { game = g2 })
+        end
+        for _, fn in ipairs(rec2.events["script.started"] or {}) do
+          pcheck(label .. " second-Kurt start", fn,
+            { ctx = { scriptKey = version.kurt2 } })
+        end
+        g2.save.inventory.LURE_BALL = 1
+        for _, fn in ipairs(rec2.events["script.ended"] or {}) do
+          pcheck(label .. " second-Kurt end", fn,
+            { ctx = { scriptKey = version.kurt2 }, completed = true })
+        end
+        check(g2.save.inventory.BALL_CASE == 1,
+          label .. " did not recognise the second SPRITE_KURT object")
+      end
+    end
 
     local stock = {}
     for _, id in ipairs(game.data.gen2Marts.lists[1]) do stock[id] = true end

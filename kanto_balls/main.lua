@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.1"
+  local VERSION = "0.8.2"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -2704,28 +2704,47 @@ return function(mod)
   -- rather than baking in a key observed on one ROM lineage.
   ----------------------------------------------------------------------
   if GEN2 then
-    local KURT_SCRIPT = nil
+    -- KURT'S SCRIPT KEYS -- PLURAL, and that is the whole of the 0.8.2
+    -- fix.  His house holds TWO SPRITE_KURT objects in every Gen 2 game:
+    -- index 1 at his counter and index 4 across the room.  0.8.0 asked
+    -- for EXACTLY ONE candidate, found two everywhere, and resolved to
+    -- nil -- so the handover was dead on Gold and Silver as well as
+    -- Crystal, not only on Crystal as first reported.
+    --
+    -- Read off the imported map data rather than guessed:
+    --   Gold      both objects carry "55:45e3" -- one key, two rows
+    --   Crystal   index 1 is "63:6178", index 4 is "63:63bd"
+    -- so neither "pick the only one" nor "pick a lineage's key" works.
+    --
+    -- Match ANY of his scripts instead.  Widening the identity does not
+    -- widen the gate: the bag diff below is what decides the moment
+    -- counted, and only the counter Kurt's post-rescue branch gives
+    -- anything (Crystal 63:6178 -> 63:61bf, verbosegiveitem LURE BALL).
+    -- The other Kurt script is small talk with no item in any branch.
+    local KURT_SCRIPTS = {}
     local kurtIdentityReported = false
 
+    local function isKurtScript(ctx)
+      local key = ctx and ctx.scriptKey
+      return type(key) == "string" and KURT_SCRIPTS[key] == true
+    end
+
     mod.events:on("game.ready", function(p)
-      KURT_SCRIPT = nil
+      KURT_SCRIPTS = {}
+      local found = 0
       local maps = p and p.game and p.game.data and p.game.data.gen2Maps
       local house = maps and maps.KURTS_HOUSE
-      local matches = {}
       for _, obj in pairs((house and house.objects) or {}) do
         if obj and obj.sprite == "SPRITE_KURT"
             and type(obj.scriptKey) == "string" and obj.scriptKey ~= "" then
-          matches[#matches + 1] = obj.scriptKey
+          if not KURT_SCRIPTS[obj.scriptKey] then found = found + 1 end
+          KURT_SCRIPTS[obj.scriptKey] = true
         end
       end
-      if #matches == 1 then
-        KURT_SCRIPT = matches[1]
-        return
-      end
+      if found > 0 then return end
       if not kurtIdentityReported then
         kurtIdentityReported = true
-        Runtime.reportError("kanto_balls",
-          ("KURT identity: found %d candidates"):format(#matches))
+        Runtime.reportError("kanto_balls", "KURT identity: no scripts found")
       end
     end)
 
@@ -2771,9 +2790,7 @@ return function(mod)
     mod.events:on("script.started", function(p)
       local ctx = p and p.ctx
       kurtBag = nil
-      if not (KURT_SCRIPT and ctx and ctx.scriptKey == KURT_SCRIPT) then
-        return
-      end
+      if not isKurtScript(ctx) then return end
       if mod.save:get("caseGiven") then return end
       local save = mod.game and mod.game.save
       local inv = save and save.inventory
@@ -2787,9 +2804,7 @@ return function(mod)
       local ctx = p and p.ctx
       local snap = kurtBag
       kurtBag = nil
-      if not (KURT_SCRIPT and ctx and ctx.scriptKey == KURT_SCRIPT) then
-        return
-      end
+      if not isKurtScript(ctx) then return end
       if not p.completed then return end
       if not snap then return end
       if mod.save:get("caseGiven") then return end
