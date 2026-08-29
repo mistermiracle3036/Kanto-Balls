@@ -10,6 +10,18 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.6
+
+- **Kurt's Ball Case handover and the dev Apricorn shelf are both
+  confirmed working on Crystal.** The temporary **[ERRS]** diagnostic that
+  found the handover bug is switched off.
+- Corrected a note that appeared in several places: mod options set on a
+  Gen 2 boot **do** persist now. The old advice to set them from a Red
+  boot is out of date.
+- Documentation fixes: the Ball Case, the canon ball set and Luxury
+  Ball's happiness bonus were still described as Gold-only. They have
+  worked on Gold, Silver and Crystal since 0.8.0.
+
 ## 0.8.5
 
 Test build.

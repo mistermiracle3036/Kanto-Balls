@@ -275,8 +275,9 @@ automatically and updates in place.
   of those seven, they appear as raw items in the ITEMS pocket until you
   enable the set again; they are not deleted.
 
-*A note for Gen 2 players:* the engine currently doesn't persist mod
-options set on a Gen 2 boot. Set these from a Red boot and they'll stick.
+Options set on a Gen 2 boot stick. (They did not until the engine fixed
+it; if you are reading an older note that says to set them from a Red
+boot, that is out of date.)
 
 ## Plays well with
 

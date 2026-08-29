@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.5"
+  local VERSION = "0.8.6"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -2171,9 +2171,12 @@ return function(mod)
   -- to give Kurt a fruit and wait a real day, per apricorn.  That is not
   -- a test loop.  This puts all seven on every Gen 2 mart at 1 each.
   --
-  -- Gated on [DEV] CHEAP BALLS rather than a switch of its own, and
-  -- deliberately: mod options still do not persist on a Gen 2 boot, so
-  -- every extra toggle is another trip to a Red save to flip it.
+  -- Gated on [DEV] CHEAP BALLS rather than a switch of its own.  The
+  -- original reason -- Gen 2 boots did not persist option changes, so
+  -- every extra toggle cost a trip to a Red save -- was fixed engine-side
+  -- and confirmed on device 2026-08-29.  It stays folded in anyway: one
+  -- dev switch, everything dev.  Trivially separable if crafting work
+  -- ever wants apricorns without cheap balls.
   --
   -- Gen 2 only: apricorns are Gen 2 items and Gen 1 has none at all,
   -- which is also why the craft tier is Gen 2-first.
@@ -2810,7 +2813,11 @@ return function(mod)
     -- are terse because that screen wraps at 16 columns over 11 rows and
     -- every other mod is writing to it too.  KURT_PROBE = false turns
     -- the whole thing off in one line once the answer is in.
-    local KURT_PROBE = true
+    -- OFF: the handover is device-confirmed on Crystal (0.8.4, "E kurt
+    -- CASE OK").  The machinery stays because this bug took four rounds
+    -- and the next Gen 2 game or engine bump may need it again -- flip
+    -- this to true and the rows come back.
+    local KURT_PROBE = false
     local probeLeft = 10
     local function probe(msg)
       if not KURT_PROBE or probeLeft <= 0 then return end
