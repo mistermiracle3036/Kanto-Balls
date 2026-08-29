@@ -10,6 +10,21 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.5
+
+Test build.
+
+- **Kurt's Ball Case handover is confirmed working on Crystal.** No
+  change to it here.
+- **Restored: with [DEV] CHEAP BALLS on, all seven Apricorns are sold at
+  every Gen 2 mart for 1.** This existed at 0.4.10 and was removed during
+  release prep at 0.4.25. Every recipe spends Apricorns, and the honest
+  way to get one is to hand Kurt a fruit and wait a real day per
+  Apricorn, which is not a way to test a crafting tier.
+- The Ball Case itself is **not** back on that shelf. It rode along until
+  0.4.25 and undercut Kurt; his handover is the earned source now.
+- The **[ERRS]** diagnostic from 0.8.3 is still on in this build.
+
 ## 0.8.4
 
 Test build. The third and, on the evidence, the real fix.

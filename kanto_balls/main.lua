@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.4"
+  local VERSION = "0.8.5"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -2154,6 +2154,82 @@ return function(mod)
       if not stocked then
         Runtime.reportError("kanto_balls", "GEN2: no ball shelf found")
       end
+    end)
+  end
+
+  ----------------------------------------------------------------------
+  -- ###  DEV SCAFFOLDING -- APRICORNS ON EVERY GEN 2 SHELF  ###
+  --
+  -- RESTORED at 0.8.5.  This shipped at 0.4.10 and was stripped at
+  -- 0.4.25 as release prep, correctly at the time: it also sold the BALL
+  -- CASE for a token price, which undercut Kurt the moment his handover
+  -- started working.  The case is NOT on this shelf now -- his handover
+  -- is device-confirmed on Crystal at 0.8.4 -- and the apricorns are
+  -- what makes the craft tier testable at all.
+  --
+  -- WHY: every recipe spends apricorns, and the honest way to get one is
+  -- to give Kurt a fruit and wait a real day, per apricorn.  That is not
+  -- a test loop.  This puts all seven on every Gen 2 mart at 1 each.
+  --
+  -- Gated on [DEV] CHEAP BALLS rather than a switch of its own, and
+  -- deliberately: mod options still do not persist on a Gen 2 boot, so
+  -- every extra toggle is another trip to a Red save to flip it.
+  --
+  -- Gen 2 only: apricorns are Gen 2 items and Gen 1 has none at all,
+  -- which is also why the craft tier is Gen 2-first.
+  --
+  -- Same discipline as the mart shelf above: presence-checked,
+  -- append-only, and it never touches a list it did not find an entry to
+  -- add to.  The price write mutates vanilla item records for the
+  -- session, which is exactly why this is fenced and dev-gated.
+  --
+  -- Ids are the cart's own abbreviations (BLU/YLW/WHT/BLK/PNK, not
+  -- BLUE/YELLOW/...), verified present in the imported Crystal item
+  -- table as well as Gold's.
+  ----------------------------------------------------------------------
+  if GEN2 and CHEAP then
+    local APRICORNS = {
+      "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+      "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+    }
+
+    mod.events:on("game.ready", function(p)
+      local data = p.game and p.game.data
+      if not data then return end
+
+      local priced = 0
+      for _, id in ipairs(APRICORNS) do
+        local def = data.items and data.items[id]
+        if def then
+          def.price = 1
+          priced = priced + 1
+        end
+      end
+
+      local marts = data.gen2Marts
+      local lists = marts and (marts.lists or marts)
+      if type(lists) ~= "table" then
+        Runtime.reportError("kanto_balls", "DEV APRI: no marts")
+        return
+      end
+      local shelves = 0
+      for _, list in ipairs(lists) do
+        if type(list) == "table" then
+          local has = {}
+          for _, id in ipairs(list) do has[id] = true end
+          for _, id in ipairs(APRICORNS) do
+            if not has[id] and data.items and data.items[id] then
+              list[#list + 1] = id
+              has[id] = true
+            end
+          end
+          shelves = shelves + 1
+        end
+      end
+      -- Names what it did: "the shelf looks the same" must be
+      -- distinguishable from "the option has not taken effect yet".
+      Runtime.reportError("kanto_balls",
+        ("DEV APRI %d/%d %dsh"):format(priced, #APRICORNS, shelves))
     end)
   end
 

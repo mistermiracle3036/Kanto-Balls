@@ -244,9 +244,19 @@ local function fakeGame(kurtKey, kurtKey2)
   function stack:push(state) states[#states + 1] = state end
   function stack:pop() return table.remove(states) end
   stack._states = states
+  -- The cart's own apricorn records. Every Gen 2 game has all seven, and
+  -- the dev shelf is presence-checked against data.items -- so a fixture
+  -- without them silently proves nothing about it.
+  local vanillaItems = {}
+  for _, id in ipairs({
+    "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+    "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+  }) do
+    vanillaItems[id] = { id = id, price = 200, pocket = "ITEM" }
+  end
   local game = {
     data = {
-      items = {}, pokemon = {}, moves = {},
+      items = vanillaItems, pokemon = {}, moves = {},
       gen2Marts = { lists = { { "POKE_BALL", "GREAT_BALL", "ULTRA_BALL" } } },
       gen2Palettes = { battleObjects = {} },
       -- Kurt's script, in the shape both lineages really carry: check the
@@ -437,6 +447,25 @@ for _, gen in ipairs({ 1, 2 }) do
           check((stock[id] and true or false) == cheap,
             label .. " artifact shelf gate wrong for " .. id)
         end
+
+        -- THE DEV APRICORN SHELF. Restored at 0.8.5; it shipped at 0.4.10
+        -- and was stripped at 0.4.25 with no test to notice it had gone.
+        for _, id in ipairs({
+          "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+          "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+        }) do
+          check((stock[id] and true or false) == cheap,
+            label .. " apricorn dev shelf gate wrong for " .. id)
+          if cheap then
+            local def = game.data.items[id]
+            check(def and def.price == 1,
+              label .. " " .. id .. " is not priced 1 on the dev shelf")
+          end
+        end
+        -- The BALL CASE rode this shelf until 0.4.25 and must not again:
+        -- Kurt's handover is the earned source and works (0.8.4).
+        check(not stock.BALL_CASE,
+          label .. " the dev shelf sells the BALL CASE and undercuts Kurt")
       end
 
       if not cheap then
