@@ -12,15 +12,48 @@ Events was folded in; there is one mod and one zip now.
 
 ## 0.8.6
 
-- **Kurt's Ball Case handover and the dev Apricorn shelf are both
-  confirmed working on Crystal.** The temporary **[ERRS]** diagnostic that
-  found the handover bug is switched off.
-- Corrected a note that appeared in several places: mod options set on a
-  Gen 2 boot **do** persist now. The old advice to set them from a Red
-  boot is out of date.
-- Documentation fixes: the Ball Case, the canon ball set and Luxury
-  Ball's happiness bonus were still described as Gold-only. They have
-  worked on Gold, Silver and Crystal since 0.8.0.
+**Updating from 0.6.1?** This is a big one. Too Many Balls now runs on
+**Silver and Crystal** as well as Gold, and brings eleven new balls, an
+Apricorn workbench you get from Kurt, and a Ball Case that stores the
+whole collection so it stops eating your pack.
+
+**Eleven new balls.**
+- **Nine canon balls.** Quick, Timer, Net, Dusk, Repeat, Dream and Dive
+  join the Gen 2 mart shelves for ¥1000 each, every one with a shop
+  description that tells you what it does before you buy. Luxury Ball is
+  ¥3000 in both generations and starts your catch friendlier. Cherish
+  Ball is never sold -- Kurt gives you one.
+- **Four quest balls** that stories can hand out: Cage, Crystal, Strange
+  and Origin. They are not for sale and do not appear in normal play.
+- If you run **Custom Poké Balls**, it keeps Quick/Timer/Net/Dusk/Repeat/
+  Dream/Dive on Gen 1 and this mod stands aside; turn **CANON BALL SET**
+  off if you would rather it stood aside everywhere.
+
+**Kurt and the Ball Case.** Return to Kurt after the Slowpoke Well and he
+hands over the **BALL CASE**, plus a Cherish Ball. Use it from your pack
+to mix Apricorns into five balls of its own -- Kecleon, Drift, Snare,
+Catalyst and Cradle -- and to stow the whole collection out of your pack
+and take it back later. A full pack returns what fits and keeps the rest;
+nothing is ever lost. **If you cleared the well long ago, just talk to him
+once and the case arrives.**
+
+**Also.**
+- **Silver and Crystal** get everything Gold has: shelves, descriptions,
+  ball pockets, colours and catch behaviour. Crystal's own GS Ball and
+  its Celebi quest are left completely alone.
+- Your pack grows by one slot per ball this mod can actually give you.
+- Every catch remembers which ball caught it, so Pokéball Colors can
+  colour the healing machine to match.
+
+**New in 0.8.6 specifically:**
+- Kurt's handover and the developer Apricorn shelf are both confirmed
+  working on Crystal, and the temporary **[ERRS]** diagnostic that found
+  the handover bug is switched off.
+- Mod options set on a Gen 2 boot **do** persist now; older notes telling
+  you to set them from a Red boot are out of date and have been removed.
+- The Ball Case, the canon set and Luxury Ball were still described as
+  Gold-only in places. They have worked on all three Gen 2 games since
+  0.8.0.
 
 ## 0.8.5
 
