@@ -10,6 +10,25 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.3
+
+Test build. Kurt still did not hand over the Ball Case after 0.8.2, so
+this carries a second real fix and a diagnostic.
+
+- **Fixed: a nested script during Kurt's conversation threw away the
+  check that decides whether he gave you anything.** His house runs an
+  object-rebuild script of its own, and any run of it mid-conversation
+  reset the comparison, so the handover was abandoned without a word.
+- **Diagnostic:** while this build is installed, the **[ERRS]** screen
+  reports every script that runs in Kurt's house and, if the case still
+  does not arrive, the exact reason it was skipped. This is temporary and
+  comes out once the handover is confirmed on a device.
+- Also in 0.8.2: Kurt's identity is matched against every one of his
+  scripts. His house holds two Kurt objects in every Gen 2 game -- one
+  shared script on Gold and Silver, two different ones on Crystal -- and
+  0.8.0's "exactly one" test matched neither, which left the case
+  unobtainable in all three games.
+
 ## 0.8.2
 
 **Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,

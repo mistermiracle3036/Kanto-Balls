@@ -927,6 +927,48 @@ for _, gen in ipairs({ 1, 2 }) do
         check(rescue.save.inventory.CHERISH_BALL == 1,
           label .. " KURT DID NOT GIVE ONE CHERISH BALL WITH THE CASE")
 
+        -- A NESTED SCRIPT DURING HIS CONVERSATION must not discard the
+        -- bag snapshot. KURTS_HOUSE carries a MAPCALLBACK_OBJECTS in both
+        -- lineages and a callback run emits its own started/ended pair
+        -- (Vm:runCallback), so this is not hypothetical -- and the old
+        -- code cleared the snapshot on EVERY script.started.
+        --
+        -- A FRESH LOAD, because `rec` has already handed out its case and
+        -- `caseGiven` would bail this run before the snapshot is read --
+        -- which would make the check pass for the wrong reason.
+        local okN, errN, recN = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okN, label .. " nested-script entry chunk -> " .. tostring(errN))
+        if okN then
+          local nested = fakeGame()
+          recN.modGame = nested
+          for _, fn in ipairs(recN.events["game.ready"] or {}) do
+            pcheck(label .. " nested ready", fn, { game = nested })
+          end
+          local startedN = recN.events["script.started"] or {}
+          local endedN = recN.events["script.ended"] or {}
+          for _, fn in ipairs(startedN) do
+            pcheck(label .. " nested kurt start", fn,
+              { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(startedN) do
+            pcheck(label .. " nested callback start", fn,
+              { ctx = { scriptKey = "55:45cd", kind = "callback" } })
+          end
+          for _, fn in ipairs(endedN) do
+            pcheck(label .. " nested callback end", fn,
+              { ctx = { scriptKey = "55:45cd", kind = "callback" },
+                completed = true })
+          end
+          nested.save.inventory.LURE_BALL = 1
+          for _, fn in ipairs(endedN) do
+            pcheck(label .. " nested kurt end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(nested.save.inventory.BALL_CASE == 1,
+            label .. " a nested script during Kurt's talk lost the snapshot")
+        end
+
         -- ...and only ever once, however many gifts follow.
         kurtTalk(rescue, KEY, "MOON_BALL")
         kurtTalk(rescue, KEY, "FAST_BALL")

@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.2"
+  local VERSION = "0.8.3"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -2724,6 +2724,34 @@ return function(mod)
     local KURT_SCRIPTS = {}
     local kurtIdentityReported = false
 
+    -- DEVICE PROBE, 0.8.3.  0.8.2 fixed a real bug -- 0.8.1's resolver
+    -- could not have worked on any ROM -- and the case still does not
+    -- arrive, so an assumption further down is also false and none of
+    -- the ones left can be settled from the extracted data: they are all
+    -- about what the VM actually emits during his conversation.
+    --
+    -- So this reports the run to [ERRS] instead of guessing again.  Rows
+    -- are terse because that screen wraps at 16 columns over 11 rows and
+    -- every other mod is writing to it too.  KURT_PROBE = false turns
+    -- the whole thing off in one line once the answer is in.
+    local KURT_PROBE = true
+    local probeLeft = 10
+    local function probe(msg)
+      if not KURT_PROBE or probeLeft <= 0 then return end
+      probeLeft = probeLeft - 1
+      Runtime.reportError("kanto_balls", msg)
+    end
+
+    -- KURT'S HOUSE IS GROUP 8, MAP 4 in Gold and in Crystal (read from
+    -- the imported map records, both lineages agree).  The probe reports
+    -- every script that runs in that room, whoever owns it, because "the
+    -- key we match is not the key his talk runs under" and "no script
+    -- event arrives at all" are different failures and look identical
+    -- from here.
+    local function inKurtsHouse(ctx)
+      return ctx and ctx.mapGroup == 8 and ctx.mapNumber == 4
+    end
+
     local function isKurtScript(ctx)
       local key = ctx and ctx.scriptKey
       return type(key) == "string" and KURT_SCRIPTS[key] == true
@@ -2732,15 +2760,21 @@ return function(mod)
     mod.events:on("game.ready", function(p)
       KURT_SCRIPTS = {}
       local found = 0
+      local firstKey = nil
       local maps = p and p.game and p.game.data and p.game.data.gen2Maps
       local house = maps and maps.KURTS_HOUSE
       for _, obj in pairs((house and house.objects) or {}) do
         if obj and obj.sprite == "SPRITE_KURT"
             and type(obj.scriptKey) == "string" and obj.scriptKey ~= "" then
-          if not KURT_SCRIPTS[obj.scriptKey] then found = found + 1 end
+          if not KURT_SCRIPTS[obj.scriptKey] then
+            found = found + 1
+            firstKey = firstKey or obj.scriptKey
+          end
           KURT_SCRIPTS[obj.scriptKey] = true
         end
       end
+      probe(("KURT n%d %s %s"):format(found, tostring(firstKey),
+        mod.save:get("caseGiven") and "DONE" or "OPEN"))
       if found > 0 then return end
       if not kurtIdentityReported then
         kurtIdentityReported = true
@@ -2789,8 +2823,19 @@ return function(mod)
 
     mod.events:on("script.started", function(p)
       local ctx = p and p.ctx
-      kurtBag = nil
+      if inKurtsHouse(ctx) then
+        probe(("S %s %s"):format(tostring(ctx.scriptKey),
+          isKurtScript(ctx) and "K" or "-"))
+      end
+      -- ONLY a Kurt run clears the snapshot, deliberately.  The old code
+      -- wiped it on EVERY script.started, which meant any nested run
+      -- during his conversation -- a MAPCALLBACK_OBJECTS rebuild fired by
+      -- his own `disappear`, say, and his house HAS one in both lineages
+      -- -- silently discarded the snapshot and the compare below then
+      -- found nothing to compare.  A stale snapshot is harmless: every
+      -- Kurt run takes a fresh one right here.
       if not isKurtScript(ctx) then return end
+      kurtBag = nil
       if mod.save:get("caseGiven") then return end
       local save = mod.game and mod.game.save
       local inv = save and save.inventory
@@ -2802,16 +2847,23 @@ return function(mod)
 
     mod.events:on("script.ended", function(p)
       local ctx = p and p.ctx
+      if inKurtsHouse(ctx) and not isKurtScript(ctx) then
+        probe(("E %s -"):format(tostring(ctx.scriptKey)))
+      end
+      if not isKurtScript(ctx) then return end
       local snap = kurtBag
       kurtBag = nil
-      if not isKurtScript(ctx) then return end
-      if not p.completed then return end
-      if not snap then return end
-      if mod.save:get("caseGiven") then return end
+
+      -- Every bail below says WHY on the probe build.  A silent return is
+      -- what made this cost two rounds: the failure and the fix look the
+      -- same from the player's side, which is an empty pack either way.
+      if not p.completed then return probe("E kurt !done") end
+      if not snap then return probe("E kurt !snap") end
+      if mod.save:get("caseGiven") then return probe("E kurt given") end
 
       local game = mod.game
       local save = game and game.save
-      if not save then return end
+      if not save then return probe("E kurt !save") end
 
       -- Did anything in the bag go UP during his conversation?  Checked
       -- before we add the case ourselves, so our own gift cannot be the
@@ -2823,15 +2875,18 @@ return function(mod)
           break
         end
       end
-      if not gained then return end
+      if not gained then return probe("E kurt !gift") end
       -- Already carrying one (the dev shelf, or a previous save): mark
       -- it done rather than handing over a second.
       if (save.inventory and save.inventory[CASE_ID]) then
         mod.save:set("caseGiven", true)
-        return
+        return probe("E kurt hasone")
       end
-      if not Bag.add(save, CASE_ID, 1, game.data) then return end
+      if not Bag.add(save, CASE_ID, 1, game.data) then
+        return probe("E kurt !bagadd")
+      end
       mod.save:set("caseGiven", true)
+      probe("E kurt CASE OK")
 
       -- A commemorative extra, only after the CASE itself is safely in
       -- hand.  Failure is intentionally non-fatal: a full BALL pocket must
