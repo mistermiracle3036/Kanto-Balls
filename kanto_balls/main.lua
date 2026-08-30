@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.7"
+  local VERSION = "0.8.8"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -112,9 +112,24 @@ return function(mod)
   local ItemEffects = require("src.inventory.ItemEffects")
   local Pokemon = require("src.pokemon.Pokemon")
   local Screens = require("src.ui.Screens")
-  -- Chrome is a shared, stateless GB renderer despite its historical
-  -- gen2 path; its box/print/cursor helpers work in both engine lines.
-  local Chrome = require("src.ui.gen2.Chrome")
+  -- CHROME IS GEN 2 ONLY, AND THE LOADER ENFORCES THAT.  Requiring any
+  -- `src.<x>.gen2.<y>` module on a Gen 1 game is REFUSED outright --
+  -- crossGenerationDenial, src/mods/Loader.lua:124 -- and a refused
+  -- require fails the whole entry chunk, so the mod does not load at all.
+  --
+  -- 0.8.0 hoisted this to the top level unguarded, on the reasoning that
+  -- Chrome is "a shared, stateless GB renderer despite its historical
+  -- gen2 path".  That may even be true of the code; it is irrelevant,
+  -- because the denial is on the module PATH and never looks inside.
+  -- The result shipped in 0.8.7: kanto_balls FAILED to load on Red, Blue
+  -- and Yellow, reported by a player.  0.6.1 had it right -- the require
+  -- sat inside `if GEN2 then` and was never reached on Gen 1.
+  --
+  -- Making it lazy would not help.  The shim denies at require TIME
+  -- whenever that is, so a require inside :draw() only moves the failure
+  -- from a clear load error to a crash mid-game.  It has to not happen.
+  local Chrome
+  if GEN2 then Chrome = require("src.ui.gen2.Chrome") end
   local ReviewBoxes
   local ReviewMon
   if GEN2 then
@@ -1357,7 +1372,12 @@ return function(mod)
   end)
 
   mod.events:on("pokemon.caught", function(p)
-    if p and p.ball == "CRYSTAL_BALL" and p.mon and p.game then
+    -- GEN2 ONLY: the review screen draws through Chrome, which cannot be
+    -- required on Gen 1 at all (see the require above).  On Gen 1 the
+    -- CRYSTAL BALL still catches at plain odds and the catch is kept --
+    -- it just does not offer the review.  Queuing here regardless would
+    -- park a record that nothing can ever draw.
+    if GEN2 and p and p.ball == "CRYSTAL_BALL" and p.mon and p.game then
       pendingCrystal[#pendingCrystal + 1] = {
         game = p.game, mon = p.mon, species = p.species,
       }
@@ -1951,7 +1971,11 @@ return function(mod)
     end
   end
 
-  mod.content.screens:register("KbCrystalReview", { new = CrystalReview.new })
+  -- Registered on Gen 2 only, for the same reason the queue above is:
+  -- CrystalReview:draw calls Chrome, which is nil on Gen 1.
+  if GEN2 then
+    mod.content.screens:register("KbCrystalReview", { new = CrystalReview.new })
+  end
 
   local crystalPushFailed = false
   local function pushPendingCrystal(game)
@@ -1968,27 +1992,11 @@ return function(mod)
     return true
   end
 
-  local function gen1Quiet(game)
-    local ow = game and game.overworld
-    if not (ow and game.stack and game.stack.top
-        and game.stack:top() == ow) then return false end
-    if ow.transitioning or ow.engaging or ow.emote then return false end
-    if ow.scriptMoves and #ow.scriptMoves > 0 then return false end
-    if ow.runner and ow.runner.isRunning and ow.runner:isRunning() then
-      return false
-    end
-    return true
-  end
-
-  if not GEN2 then
-    local Game = require("src.core.Game")
-    Game._kbOriginals = Game._kbOriginals or { update = Game.update }
-    local vanillaGameUpdate = Game._kbOriginals.update
-    Game.update = function(self, dt)
-      vanillaGameUpdate(self, dt)
-      if gen1Quiet(self) then pushPendingCrystal(self) end
-    end
-  end
+  -- The Gen 1 quiet-frame pusher is GONE, with gen1Quiet and the
+  -- Game.update wrap that drove it.  The review is Gen 2 only now, so on
+  -- Gen 1 that wrap ran every single frame to service a queue nothing
+  -- can ever fill.  A live wrap on an engine method is not free and not
+  -- risk-free; a dead one is all cost.
 
   ----------------------------------------------------------------------
   -- Mart shelves.

@@ -10,6 +10,25 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.8
+
+**Fixes a serious bug in 0.8.7: the mod did not load at all on Red, Blue
+or Yellow.** The mod manager showed it as FAILED and none of it ran. Gold,
+Silver and Crystal were unaffected. Update and it works again -- nothing
+is lost, and no save was ever touched, because the mod never started.
+
+The cause: 0.8.0 started loading a screen-drawing module that only exists
+for Gen 2, without checking which game was running. The engine refuses
+that outright on Gen 1, and a refused load takes the whole mod with it.
+0.8.7 was the first public build carrying it.
+
+One small change comes with the fix: the **CRYSTAL BALL's review screen is
+Gen 2 only.** On Red, Blue and Yellow the Crystal Ball still catches
+normally and keeps what it catches -- it just does not offer the
+keep-or-release review afterwards, because the screen has no way to draw
+itself there. The Crystal Ball is a quest ball that does not appear in
+ordinary play.
+
 ## 0.8.7
 
 **Updating from 0.6.1?** This is a big one. Too Many Balls now runs on
