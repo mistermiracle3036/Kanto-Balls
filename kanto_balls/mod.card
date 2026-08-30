@@ -1,5 +1,5 @@
 return {
-  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.6 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
+  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.7 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
   author = "Mister Miracle",
   tags = { "balls", "items", "template", "gold", "crafting", "apricorns" },
   differences = {
@@ -34,6 +34,7 @@ return {
     "Optional: pokeball_colors, on BOTH generations. Gen 1: this mod owns its ball records AND their colors, and registers them on game.ready; Pokeball Colors must not carry entries for these ids.",
     "Gen 2: this mod owns the THROW colour (its own battleObjects palettes plus a BattleState:ballPalette wrap) and Pokeball Colors 0.1.22+ owns the POKEMON CENTER heal machine, reading each ball's colour back out of ballPalette/battleObjects and the mon.caughtBall mark. The two do not overlap. Other ball mods should call exports.registerBallPalette(ballId, paletteName, row) instead of adding a second wrap; that also gets them onto the heal machine. Native MOON and FAST BALL colours, plus Crystal's native GS Ball, are left alone.",
     "Optional: Custom Poke Balls intentionally owns QUICK/TIMER/NET/DUSK/REPEAT/DREAM/DIVE on Gen 1. Too Many Balls owns those ids on Gen 2 unless a Gen 2 build of Custom Poke Balls is loaded or CANON BALL SET is off. Turning the set off while holding one leaves a raw item in ITEMS until re-enabled.",
+    "Changing a mod option takes effect on the NEXT load, not immediately: prices, which balls are registered and which mart shelves carry them are all decided in the entry chunk and nothing re-reads the option afterwards. A full quit and relaunch applies it.",
     "Publishes exports.owns = { kanto_balls = true, balls = { ...ids... } } and exports.balls.",
   },
 }

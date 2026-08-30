@@ -275,8 +275,11 @@ automatically and updates in place.
   of those seven, they appear as raw items in the ITEMS pocket until you
   enable the set again; they are not deleted.
 
-Options set on a Gen 2 boot stick. (They did not until the engine fixed
-it; if you are reading an older note that says to set them from a Red
+**Changing an option needs a restart to take effect.** The setting is
+saved right away, but which balls exist, what they cost and which shelves
+carry them are all decided when the mod loads -- so quit fully and
+relaunch, and the change is there. (Options set on a Gen 2 boot do stick
+now; if you are reading an older note that says to set them from a Red
 boot, that is out of date.)
 
 ## Plays well with

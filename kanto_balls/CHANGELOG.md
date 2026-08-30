@@ -10,7 +10,7 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
-## 0.8.6
+## 0.8.7
 
 **Updating from 0.6.1?** This is a big one. Too Many Balls now runs on
 **Silver and Crystal** as well as Gold, and brings eleven new balls, an
@@ -45,10 +45,19 @@ once and the case arrives.**
 - Every catch remembers which ball caught it, so Pokéball Colors can
   colour the healing machine to match.
 
-**New in 0.8.6 specifically:**
-- Kurt's handover and the developer Apricorn shelf are both confirmed
-  working on Crystal, and the temporary **[ERRS]** diagnostic that found
-  the handover bug is switched off.
+**New in 0.8.7 specifically:**
+- Documented something that was never written down: **changing an option
+  takes effect the next time the game loads, not straight away.** The
+  setting saves immediately, but which balls exist, what they cost and
+  which shelves carry them are decided when the mod loads. This matters
+  most for **CANON BALL SET** -- toggle it, quit fully, relaunch.
+- Everything in 0.8.6 below, which was never published separately.
+
+## 0.8.6
+
+- Kurt's handover and the developer Apricorn shelf confirmed working on
+  Crystal; the temporary **[ERRS]** diagnostic that found the handover bug
+  is switched off.
 - Mod options set on a Gen 2 boot **do** persist now; older notes telling
   you to set them from a Red boot are out of date and have been removed.
 - The Ball Case, the canon set and Luxury Ball were still described as
