@@ -306,6 +306,19 @@ local function loadMod(generation, options, foundMods, versionId, engineLine)
   local stubs = engineStubs(generation, versionId, engineLine)
   local realRequire = require
   _G.require = function(name)
+    -- REFUSE GEN 2 MODULES ON A GEN 1 GAME, exactly as the real loader
+    -- does (crossGenerationDenial, engine/src/mods/Loader.lua:124): any
+    -- `src.<x>.gen2.<y>` require, plus src.core.Game2. A refused require
+    -- fails the whole entry chunk and the mod does not load at all.
+    --
+    -- This shim served the stub to BOTH generations, which is the only
+    -- reason 0.8.0's unguarded `require("src.ui.gen2.Chrome")` passed
+    -- every gen1 pass here while making the mod fail to load on Red,
+    -- Blue and Yellow -- shipped, and reported by a player on 0.8.7.
+    if generation == 1
+        and (name:find("^src%.[%w_]+%.gen2%.") or name == "src.core.Game2") then
+      error(name .. " is a Gen 2 engine module and this is a Gen 1 game", 0)
+    end
     local stub = stubs[name]
     if stub then return stub end
     return realRequire(name)
@@ -1431,8 +1444,18 @@ for _, gen in ipairs({ 1, 2 }) do
         local factory = rec.screens.KbCrystalReview
         local newFn = factory and ((type(factory) == "function") and factory
           or factory.new)
-        check(type(newFn) == "function",
-          label .. " CRYSTAL review screen is not registered")
+        -- GEN 2 ONLY. The screen draws through Chrome, and Chrome cannot
+        -- be required at all on a Gen 1 game -- so registering it there
+        -- would hand Screens.push a factory whose draw calls into nil.
+        -- The CRYSTAL BALL still catches on Gen 1; it just has no review.
+        if gen == 1 then
+          check(newFn == nil,
+            label .. " CRYSTAL review is registered on Gen 1, where its "
+              .. "renderer cannot be loaded")
+        else
+          check(type(newFn) == "function",
+            label .. " CRYSTAL review screen is not registered")
+        end
         if type(newFn) == "function" then
           local function addDisplayData(g)
             g.data.pokemon.PIKACHU = { name = "PIKACHU" }
