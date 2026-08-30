@@ -3,7 +3,7 @@
 -- players' save bags, in mon.caughtBall and in the zip name)
 --
 -- Custom balls for gen1recomp, on BOTH generations since 0.4.0: Red/
--- Blue/Yellow (Gen 1) and Gold (Gen 2).  This mod is also meant to be
+-- Blue/Yellow (Gen 1) and Gold/Silver/Crystal (Gen 2). This mod is also meant to be
 -- READABLE: each ball is one self-contained pattern with the engine
 -- file/line it was verified against (Gen 1 paths against engine 0.1.75,
 -- Gen 2 paths against 0.1.78), so it can be copied into your own mod
@@ -22,10 +22,11 @@
 --
 -- Two more are registered but never sold without the [DEV] CHEAP BALLS
 -- option, which also drops every price to 1.  They are not earned
--- content yet -- but they DO exist on every boot, so one obtained under
--- the flag keeps its pocket, its name and its behaviour after the flag
--- goes off (0.4.9; before that, gating the registration orphaned them
--- into the ITEMS pocket):
+-- content yet. BEAST exists on every boot; the throwable GS record exists
+-- everywhere except Crystal, where the cart owns GS_BALL as a story key
+-- item. Outside Crystal, one obtained under the flag keeps its pocket, its
+-- name and its behaviour after the flag goes off (0.4.9; before that,
+-- gating the registration orphaned it into the ITEMS pocket):
 --
 --   GS       no attempt() at all -- the reward is the persisted MARK
 --            (mon.caughtBall), which kanto_ribbons reads
@@ -77,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.6.1"
+  local VERSION = "0.8.7"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -87,6 +88,20 @@ return function(mod)
   -- generation check beats capability detection.
   local GameVersion = require("src.core.GameVersion")
   local GEN2 = GameVersion.generation() == 2
+  -- Crystal already owns GS_BALL as the story key item used by the
+  -- Goldenrod/Ilex Forest Celebi quest (rom_manifest_crystal.json and
+  -- tests/gen2_crystal_story_test.lua). Registering our throwable record
+  -- under that same id collides with the cart item before the mod can load;
+  -- overriding or pocket-stamping it would instead break the story. Gold,
+  -- Silver and every Gen 1 game have no such native record.
+  -- Test the data capability rather than the edition name: Game2 fills
+  -- game.data.items before mods:load(game.data) (Game2.lua:930-995), and
+  -- Crystal is currently the only supported cart whose item table contains
+  -- this id. This also remains correct if another edition gains the story
+  -- item later.
+  local activeItems = mod.game and mod.game.data and mod.game.data.items
+  local NATIVE_GS_BALL = GEN2
+    and activeItems and activeItems.GS_BALL ~= nil or false
 
   local Bag = require("src.inventory.Bag")
   local Runtime = require("src.mods.Runtime")
@@ -96,6 +111,18 @@ return function(mod)
   -- unconditionally so the static scan can follow where they go.
   local ItemEffects = require("src.inventory.ItemEffects")
   local Pokemon = require("src.pokemon.Pokemon")
+  local Screens = require("src.ui.Screens")
+  -- Chrome is a shared, stateless GB renderer despite its historical
+  -- gen2 path; its box/print/cursor helpers work in both engine lines.
+  local Chrome = require("src.ui.gen2.Chrome")
+  local ReviewBoxes
+  local ReviewMon
+  if GEN2 then
+    local Boxes2 = require("src.core.gen2.Boxes")
+    local Mon2 = require("src.battle.gen2.Mon")
+    ReviewBoxes = Boxes2
+    ReviewMon = Mon2
+  end
 
   ----------------------------------------------------------------------
   -- OPTIONS -- read at LOAD time, which is only legal because of the
@@ -126,6 +153,9 @@ return function(mod)
     -- fit in the bag.
     { key = "vanilla_bag_limits", type = "toggle",
       label = "VANILLA BAG LIMITS", default = false },
+    { key = "canon_balls", type = "toggle",
+      label = "CANON BALL SET", default = true,
+      description = "Turn OFF if Custom Poke Balls owns these on Gen 2." },
   })
 
   -- Everything this flag changes -- prices, which balls exist, which
@@ -134,6 +164,19 @@ return function(mod)
   -- every entry chunk in Loader:load).  Nothing re-reads it later, so
   -- toggling the option takes effect only after a full quit and relaunch.
   local CHEAP = mod.options:get("cheap_balls") == true
+  -- Internal refunds are inventory mutations, not mart purchases. The
+  -- purchase detector checks this while its Bag.add wrapper is active.
+  local suppressPurchaseTracking = false
+
+  -- The seven ids below belong to Custom Poke Balls on Gen 1.  On Gold
+  -- they are ours only while that mod has no Gold build loaded and the
+  -- player has left CANON BALL SET enabled.  `custom_pokeballs` is an
+  -- optional dependency in manifest.json specifically to order its entry
+  -- chunk first without requiring it (Loader.lua:_order, 744-748), so this
+  -- load-time mod.find cannot race a future Gold port.
+  local CANON_BALLS = GEN2
+    and mod.options:get("canon_balls") ~= false
+    and mod.find("custom_pokeballs") == nil
 
   -- Ownership, declared so other mods (notably pokeball_colors) can
   -- check at runtime instead of via a handoff note.  This mod owns
@@ -157,14 +200,26 @@ return function(mod)
     -- and for the same reason, it is registered rather than gated, or a
     -- traded/imported one would fall to the ITEMS pocket (see 0.4.9).
     "SNARE_BALL", "CATALYST_BALL", "DRIFT_BALL", "KECLEON_BALL",
-    "CRADLE_BALL", "ACE_BALL",
+    "CRADLE_BALL", "ACE_BALL", "LUXURY_BALL", "CHERISH_BALL",
+    -- Story/artifact balls. They stay registered on every boot so quest
+    -- mods may grant them safely, but only the [DEV] shelf exposes them.
+    "CAGE_BALL", "CRYSTAL_BALL", "STRANGE_BALL", "ORIGIN_BALL",
   }
   if not GEN2 then
     BALL_IDS[#BALL_IDS + 1] = "MOON_BALL"
     BALL_IDS[#BALL_IDS + 1] = "FAST_BALL"
   end
-  -- GS and BEAST are ALWAYS registered, and only their SHELVES are gated
-  -- on the dev flag.  Through 0.4.8 the registration itself was gated,
+  if CANON_BALLS then
+    for _, id in ipairs({
+      "QUICK_BALL", "TIMER_BALL", "NET_BALL", "DUSK_BALL",
+      "REPEAT_BALL", "DREAM_BALL", "DIVE_BALL",
+    }) do
+      BALL_IDS[#BALL_IDS + 1] = id
+    end
+  end
+  -- BEAST is always registered. The throwable GS record is too except on
+  -- Crystal, where the cart's story key item owns the id. Only their
+  -- SHELVES are gated on the dev flag. Through 0.4.8 registration was gated,
   -- which had a bug the developer hit on device: a player who obtained
   -- one under [DEV] CHEAP BALLS and then turned the flag off still had
   -- the item in the save, but with no record registered `Bag.pocketOf`
@@ -176,7 +231,9 @@ return function(mod)
   -- and nothing in the game enumerates the item catalogue at a player.
   -- So they exist, keep their pocket and their name, and stay
   -- unobtainable.
-  BALL_IDS[#BALL_IDS + 1] = "GS_BALL"
+  if not NATIVE_GS_BALL then
+    BALL_IDS[#BALL_IDS + 1] = "GS_BALL"
+  end
   BALL_IDS[#BALL_IDS + 1] = "BEAST_BALL"
   -- Declared HERE, not down beside the Ball Case block that uses it most:
   -- the game.ready pocket stamp below runs earlier in the file, and a
@@ -197,6 +254,7 @@ return function(mod)
   -- One wrap, one queue: wrapping Game2.update twice would make load
   -- order decide which drain ran first.
   local pendingCoda = nil
+  local pendingCrystal = {}
 
   local OWNED = {}
   for _, id in ipairs(BALL_IDS) do OWNED[id] = true end
@@ -262,10 +320,12 @@ return function(mod)
   -- its economy and this quietly gutted it, having never shipped: public
   -- is 0.4.7 and the wrap arrived in 0.4.8.
   --
-  -- Counting the obtainable set instead: 7 on Red (six shelf balls plus
-  -- PREMIER), 11 on Gold, +2 on either under [DEV] CHEAP BALLS. Gold is
-  -- unchanged in the way that matters -- 12 native kinds plus 11 of ours
-  -- is exactly the 23 a full Gold ball pocket now holds.
+  -- Counting the obtainable set instead: 8 on Red (seven shelf balls plus
+  -- PREMIER), 20 on Gen 2 with the canon set active, +6 under [DEV] CHEAP
+  -- BALLS (+5 on Crystal, where its native story GS Ball is not ours).
+  -- The Gold/Silver arithmetic is the old 11 + LUXURY +
+  -- CHERISH + the seven canon balls = 20.  If the toggle or the
+  -- custom_pokeballs defer removes those seven, Gen 2 asks for 13 instead.
   local ballSlots = 0
   do
     -- Craft-tier balls exist on Gen 1 so a traded one keeps its pocket
@@ -274,10 +334,18 @@ return function(mod)
       SNARE_BALL = true, CATALYST_BALL = true, DRIFT_BALL = true,
       KECLEON_BALL = true, CRADLE_BALL = true, ACE_BALL = true,
     }
-    local DEV_ONLY = { GS_BALL = true, BEAST_BALL = true }
+    -- Not a recipe: registered on both generations so an imported one
+    -- stays a ball, but its only acquisition is Kurt's Gold-only gift.
+    local GOLD_GIFT_ONLY = { CHERISH_BALL = true }
+    local DEV_ONLY = {
+      GS_BALL = true, BEAST_BALL = true,
+      CAGE_BALL = true, CRYSTAL_BALL = true,
+      STRANGE_BALL = true, ORIGIN_BALL = true,
+    }
     for _, id in ipairs(BALL_IDS) do
       local reachable = true
       if not GEN2 and CRAFT_ONLY[id] then reachable = false end
+      if not GEN2 and GOLD_GIFT_ONLY[id] then reachable = false end
       if not CHEAP and DEV_ONLY[id] then reachable = false end
       if reachable then ballSlots = ballSlots + 1 end
     end
@@ -361,18 +429,31 @@ return function(mod)
     SILPH_BALL   = "A prototype ball.\nIt often breaks.",
     MOON_BALL    = "Good on those that\ntake a MOON STONE.",
     FAST_BALL    = "Good on very fast\nPOKeMON.",
-    GS_BALL      = "A curious ball.\nIt marks its catch.",
+    GS_BALL      = "A curious ball.\nIt marks a catch.",
     BEAST_BALL   = "Made for legends.\nPoor on all else.",
     SNARE_BALL   = "Holds a sleeping\nor frozen POKeMON.",
     CATALYST_BALL = "Good on those that\nevolve by stone.",
     DRIFT_BALL   = "Good on light and\nairy POKeMON.",
-    -- Was "Turns the colour of\nits target." -- that first line is 19
-    -- columns, one over, and it promised only the trick.  Now it leads
+    -- The old description's first line was 19 columns, one over, and it
+    -- promised only the trick. Now it leads
     -- with the odds, because that is what a player choosing a ball off
     -- this list needs to know first.
     KECLEON_BALL = "A good ball that\nmimics its target.",
     CRADLE_BALL  = "The catch begins\nagain at level 1.",
     ACE_BALL     = "Best on a target\nstill at full HP.",
+    LUXURY_BALL  = "A finer catch with\na happier start.",
+    CHERISH_BALL = "A rare keepsake.\nPlain catch odds.",
+    QUICK_BALL   = "Best at the start\nof a wild battle.",
+    TIMER_BALL   = "Grows stronger as\nthe battle drags.",
+    NET_BALL     = "Good on WATER and\nBUG-type POKeMON.",
+    DUSK_BALL    = "Good at night or\ninside dark caves.",
+    REPEAT_BALL  = "Good on a species\nyou caught before.",
+    DREAM_BALL   = "Best on a sleeping\nPOKeMON.",
+    DIVE_BALL    = "Good while fishing\nor while surfing.",
+    CAGE_BALL    = "Each failed throw\ncloses its cage.",
+    CRYSTAL_BALL = "Inspect the catch.\nKeep it or let go.",
+    STRANGE_BALL = "Its catch strength\nvaries each throw.",
+    ORIGIN_BALL  = "Made for a single\nfateful encounter.",
   }
 
   ----------------------------------------------------------------------
@@ -495,7 +576,7 @@ return function(mod)
       local vanillaAdd = Bag._kbShopOriginals.add
       Bag.add = function(save, id, qty, data)
         local ok = vanillaAdd(save, id, qty, data)
-        if ok and not shop.emitting then
+        if ok and not shop.emitting and not suppressPurchaseTracking then
           shop.pending = { id = id, qty = qty or 1, save = save, data = data }
         end
         return ok
@@ -787,6 +868,41 @@ return function(mod)
   end)
 
   ----------------------------------------------------------------------
+  -- LUXURY + CHERISH BALLS -- shared ids, deliberately plain odds.
+  -- LUXURY is sold in both generations.  Gold's engine stores friendship
+  -- as mon.happiness (src/battle/gen2/Mon.lua:364; Happiness.lua:166), so
+  -- a Gold catch starts at 120.  Canon's doubled future gains have no
+  -- stable catch-ball seam in engine 0.2.4; this is an approximation.
+  -- TODO/CONFIRM the 120 starting value and palette on a real Gold catch.
+  -- CHERISH is registered on both generations so an imported one remains
+  -- throwable, but Kurt's Gold-only handover below is its sole source.
+  ----------------------------------------------------------------------
+  registerBall("LUXURY_BALL", "LUXURY BALL", 3000, {})
+  registerBall("CHERISH_BALL", "CHERISH BALL", 0, {})
+
+  if GEN2 then
+    mod.events:on("pokemon.caught", function(p)
+      if p.ball == "LUXURY_BALL" and p.mon then
+        p.mon.happiness = 120
+      end
+    end)
+  end
+
+  -- Later-generation canon balls.  These records exist only on Gold and
+  -- only while CANON_BALLS owns the ids; the single catch.rate wrap below
+  -- supplies their behavior.  Their mart descriptions are BALL_DESC rows
+  -- above (two lines, eighteen columns or fewer).
+  if CANON_BALLS then
+    registerBall("QUICK_BALL",  "QUICK BALL",  1000, {})
+    registerBall("TIMER_BALL",  "TIMER BALL",  1000, {})
+    registerBall("NET_BALL",    "NET BALL",    1000, {})
+    registerBall("DUSK_BALL",   "DUSK BALL",   1000, {})
+    registerBall("REPEAT_BALL", "REPEAT BALL", 1000, {})
+    registerBall("DREAM_BALL",  "DREAM BALL",  1000, {})
+    registerBall("DIVE_BALL",   "DIVE BALL",   1000, {})
+  end
+
+  ----------------------------------------------------------------------
   -- THE MARK -- which ball caught this Pokemon, recorded on the Pokemon.
   --
   -- The engine does NOT do this.  `caughtBall` appears nowhere in engine
@@ -996,6 +1112,22 @@ return function(mod)
       mon.maxHp = stats.hp
       mon.hp = stats.hp
 
+      -- DO NOT "TIDY" THIS INTO Mon.refreshStats(mon, data). It is the
+      -- same three lines to look at and is not the same behaviour:
+      -- refreshStats CLAMPS hp (gen2/Mon.lua:109 --
+      -- `if mon.hp == nil or mon.hp > stats.hp`) where this SETS it.
+      -- Identical for a healthy catch; different for a weakened one -- a
+      -- target caught at 5/129 would arrive at 5/11 instead of full. A
+      -- level-1 rebirth is meant to arrive whole, so the outright set is
+      -- the behaviour and not an oversight.
+      --
+      -- It also returns `mon` UNCHANGED when the species has no
+      -- baseStats, where the assert above fails loudly. A silent no-op
+      -- there is a CRADLE catch that quietly did not reset.
+      --
+      -- Suggested by the checker after engine 0.1.84 added refreshStats;
+      -- declined on purpose, recorded here so it is declined once.
+
       -- caughtLevel deliberately keeps the ENCOUNTER level: the engine
       -- preserves it across evolution and daycare independently of the
       -- mon's current level, so resetting it would be a lie about where
@@ -1176,6 +1308,63 @@ return function(mod)
   })
 
   ----------------------------------------------------------------------
+  -- STORY / ARTIFACT BALLS -- registered everywhere, obtainable only
+  -- from a quest or the [DEV] shelf.  Their ids are intentionally plain
+  -- contracts so a later quest mod can grant one without depending on
+  -- Too Many Balls' acquisition UI.
+  ----------------------------------------------------------------------
+  local cageFailures = setmetatable({}, { __mode = "k" })
+
+  registerBall("CAGE_BALL", "CAGE BALL", 0, {
+    tossAnim = "ULTRATOSS_ANIM",
+    attempt = function(ctx)
+      local failed = cageFailures[ctx.battle] or 0
+      if failed >= 2 then return true, 3 end
+      if failed == 1 then boost(ctx, 2) end
+      return ctx.vanillaAttempt()
+    end,
+  })
+
+  registerBall("CRYSTAL_BALL", "CRYSTAL BALL", 0, {})
+
+  local STRANGE_MULTS = { 0.75, 1, 1.5, 2 }
+  registerBall("STRANGE_BALL", "STRANGE BALL", 0, {
+    attempt = function(ctx)
+      -- The battle RNG is part of the catch attempt contract. Exactly
+      -- one draw per real throw keeps replays deterministic.
+      local index = ctx.rng(1, #STRANGE_MULTS)
+      boost(ctx, STRANGE_MULTS[index] or 1)
+      return ctx.vanillaAttempt()
+    end,
+  })
+
+  registerBall("ORIGIN_BALL", "ORIGIN BALL", 0, {
+    tossAnim = "ULTRATOSS_ANIM",
+    attempt = function() return true, 3 end,
+  })
+
+  mod.events:on("battle.ball_thrown", function(p)
+    if not (p and p.ball == "CAGE_BALL" and p.battle) then return end
+    if p.caught then
+      cageFailures[p.battle] = nil
+    else
+      cageFailures[p.battle] = (cageFailures[p.battle] or 0) + 1
+    end
+  end)
+
+  mod.events:on("battle.ended", function(p)
+    if p and p.battle then cageFailures[p.battle] = nil end
+  end)
+
+  mod.events:on("pokemon.caught", function(p)
+    if p and p.ball == "CRYSTAL_BALL" and p.mon and p.game then
+      pendingCrystal[#pendingCrystal + 1] = {
+        game = p.game, mon = p.mon, species = p.species,
+      }
+    end
+  end)
+
+  ----------------------------------------------------------------------
   -- GS BALL and BEAST BALL -- [DEV] CHEAP BALLS only.
   --
   -- Both are gated on the option because they are not earned content yet:
@@ -1218,10 +1407,11 @@ return function(mod)
   local LEGENDARY_SET = 255
   local BEAST_PENALTY = 0.2
 
-  -- Registered unconditionally; only the mart shelves below are gated on
-  -- the dev flag (see the BALL_IDS note above for the pocket bug that
-  -- gating the registration caused).  Under the flag `registerBall` also
-  -- drops the price to 1, so "cheap" still means cheap.
+  -- BEAST is registered unconditionally; GS is registered everywhere but
+  -- Crystal. Only the mart shelves below are gated on the dev flag (see the
+  -- BALL_IDS note above for the pocket bug that gating the registration
+  -- caused). Under the flag `registerBall` also drops the price to 1, so
+  -- "cheap" still means cheap.
   --
   -- GS BALL -- deliberately the most boring ball in the mod: no
   -- attempt() at all, so it catches exactly like a Poke Ball.  The
@@ -1230,7 +1420,9 @@ return function(mod)
   -- logic belongs in kanto_ribbons; this mod's whole job is to exist
   -- and be catchable with.  (And yes, taking the GS BALL to Gold is
   -- the joke finally landing.)
-  registerBall("GS_BALL", "GS BALL", 200, {})
+  if not NATIVE_GS_BALL then
+    registerBall("GS_BALL", "GS BALL", 200, {})
+  end
 
   -- boost() above only ever multiplies up, so it can leave the rate
   -- fractional when handed a value below 1.  A penalty needs its own
@@ -1349,9 +1541,17 @@ return function(mod)
   -- the roll, returning `caught, rate` replaces it.  Our ball ids are
   -- unknown to Gold's ball table, so recordFor answers nil and the rate
   -- math uses o.catchRate untouched -- exactly the seam we need.
-  -- Probe-confirmed field inventory on device: catchRate, level,
-  -- species, playerSpecies, evolveItem, weight, gender present; no
-  -- base stats, no mon/def/battle.
+  -- Field inventory probe-confirmed on device during 0.4.x:
+  -- catchRate, level, species, playerSpecies, evolveItem, weight,
+  -- gender.
+  --
+  -- STALE IN ONE DIRECTION as of engine 0.2.4: it ALSO passes
+  -- `battle`, `mon` and `def` now (gen2 BattleState:catchOptions,
+  -- :2969), which is what QUICK/TIMER (battle.turn) and NET
+  -- (def.types) read. Still no BASE STATS, so a Fast-alike stays
+  -- impossible here. Every arm still guards its own field: an older
+  -- engine omitting one must mean "condition not met", never an
+  -- error and never a boost.
   --
   -- Native balls (incl. Gold's own MOON and FAST) never match an arm
   -- here and pass straight through to vanilla.  On Gen 1 this wrap is
@@ -1361,6 +1561,8 @@ return function(mod)
   -- would double-boost Red.
   ----------------------------------------------------------------------
   if GEN2 then
+    local FieldMoves = require("src.world.gen2.FieldMoves")
+
     -- edit-in-place twin of boost(): Gold reads o.catchRate where
     -- Gen 1's attempt ctx reads rateOverride
     local function boostFlat(o, mult)
@@ -1374,6 +1576,36 @@ return function(mod)
     local function oneIn(o, n)
       if o.random then return o.random(n) == 0 end
       return love.math.random(n) == 1
+    end
+
+    local function hasType(def, wanted)
+      -- Gold's extractor maps ROM type bytes through typeById, and the
+      -- manifest ids are uppercase (including WATER and BUG).  No loaded
+      -- species table is committed with the engine checkout, so one live
+      -- species still needs device confirmation. TODO/CONFIRM on device.
+      for _, id in pairs((def and def.types) or {}) do
+        if id == wanted then return true end
+      end
+      return false
+    end
+
+    -- DREAM deliberately excludes FREEZE.  Gold's native status ids are
+    -- lower-case (`sleep`); SLP is accepted for mod-authored compatibility.
+    local function isAsleep(status)
+      if type(status) ~= "string" then return false end
+      local s = status:lower()
+      return s == "sleep" or s == "slp"
+    end
+
+    local function inDarkPlace()
+      local world = mod.world
+      if world and world.overworld then
+        world = world:overworld() or world
+      end
+      local env = world and world.map and world.map.def
+        and world.map.def.environment
+      return (world and world.daytime == "NITE")
+        or env == "CAVE" or env == "DUNGEON"
     end
 
     mod.hooks:wrap("catch.rate", function(next_, ball, mon, def, o)
@@ -1393,6 +1625,23 @@ return function(mod)
           boostFlat(o, 4)
         end
 
+      elseif ball == "CAGE_BALL" then
+        local failed = cageFailures[o.battle] or 0
+        if failed >= 2 then return true, 255 end
+        if failed == 1 then boostFlat(o, 2) end
+
+      elseif ball == "STRANGE_BALL" then
+        -- Gold's battle RNG answers 0..n-1. Missing RNG must fail closed
+        -- to ordinary odds; never substitute love.math and desync a replay.
+        local mult = 1
+        if type(o.random) == "function" then
+          mult = STRANGE_MULTS[o.random(#STRANGE_MULTS) + 1] or 1
+        end
+        boostFlat(o, mult)
+
+      elseif ball == "ORIGIN_BALL" then
+        return true, 255
+
       elseif ball == "CRADLE_BALL" then
         -- Replace the roll outright.  Gold returns `caught,
         -- wFinalCatchRate`, and 255 drives the clean catch animation.
@@ -1401,6 +1650,52 @@ return function(mod)
       elseif ball == "ACE_BALL" then
         local mult = aceMultiplier(o.hp, o.maxHp)
         if mult > 1 then boostFlat(o, mult) end
+
+      elseif ball == "QUICK_BALL" then
+
+        -- FAILS CLOSED, and that is the point of writing it this way.
+
+        -- `(o.battle and o.battle.turn) or 0` reads naturally and is
+
+        -- wrong: a missing battle defaults to 0, 0 satisfies <= 1, and
+
+        -- QUICK silently becomes a universal x4 -- the strongest ball in
+
+        -- the mod, by accident, on any engine that stops passing
+
+        -- `battle`. Boost only when the turn is actually KNOWN. TIMER
+
+        -- below degrades to x1 on its own arithmetic and needs no twin.
+
+        local turn = o.battle and o.battle.turn
+
+        if turn and turn <= 1 then boostFlat(o, 4) end
+
+      elseif ball == "TIMER_BALL" then
+        local turn = (o.battle and o.battle.turn) or 0
+        boostFlat(o, math.min(4, 1 + math.floor(turn / 5)))
+
+      elseif ball == "NET_BALL" then
+        local targetDef = o.def or def
+        if hasType(targetDef, "WATER") or hasType(targetDef, "BUG") then
+          boostFlat(o, 3)
+        end
+
+      elseif ball == "DUSK_BALL" then
+        if inDarkPlace() then boostFlat(o, 3) end
+
+      elseif ball == "REPEAT_BALL" then
+        local save = mod.game and mod.game.save
+        local caught = save and save.pokedex and save.pokedex.caught
+        if o.species and caught and caught[o.species] then boostFlat(o, 3) end
+
+      elseif ball == "DREAM_BALL" then
+        if isAsleep(o.status) then boostFlat(o, 4) end
+
+      elseif ball == "DIVE_BALL" then
+        local save = mod.game and mod.game.save
+        local surfing = save and FieldMoves.isSurfing(save.playerState)
+        if o.fishing or surfing then boostFlat(o, 3) end
 
       elseif ball == "CATALYST_BALL" then
         -- presence of evolveItem IS "evolves by an item" on Gold
@@ -1441,9 +1736,258 @@ return function(mod)
         boostFlat(o, KECLEON_MULT)
       end
 
-      -- PREMIER, HEAL, GS: no catch code by design.
+      -- PREMIER, HEAL, LUXURY, CHERISH, CRYSTAL, GS: plain odds.
       return next_(ball, mon, def, o)
     end)
+  end
+
+  ----------------------------------------------------------------------
+  -- CRYSTAL BALL REVIEW -- the catch is stored by vanilla first, then a
+  -- quiet-frame screen shows the exact live record. RELEASE refunds the
+  -- ball before removing that exact identity; any failed check keeps the
+  -- Pokemon and reports visibly instead of guessing at a party/box slot.
+  ----------------------------------------------------------------------
+  local CrystalReview = {}
+  CrystalReview.__index = CrystalReview
+
+  local function fit(text, width)
+    text = tostring(text or "")
+    if #text <= width then return text end
+    return text:sub(1, width)
+  end
+
+  local function locateCaught(game, wanted)
+    local save = game and game.save
+    if not (save and wanted) then return nil, "save or catch missing" end
+    local hits = {}
+    for i, mon in ipairs(save.party or {}) do
+      if mon == wanted then
+        hits[#hits + 1] = { kind = "party", list = save.party, slot = i }
+      end
+    end
+
+    if GEN2 then
+      for boxIndex = 1, ReviewBoxes.NUM_BOXES do
+        local box = (save.boxes and save.boxes[boxIndex]) or {}
+        for slot, mon in ipairs(box) do
+          if mon == wanted then
+            hits[#hits + 1] = { kind = "box", list = box,
+              box = boxIndex, slot = slot }
+          end
+        end
+      end
+    else
+      for boxIndex, box in ipairs(save.boxes or {}) do
+        for slot, mon in ipairs(box) do
+          if mon == wanted then
+            hits[#hits + 1] = { kind = "box", list = box,
+              box = boxIndex, slot = slot }
+          end
+        end
+      end
+    end
+
+    if #hits ~= 1 then
+      return nil, ("catch identity found %d times"):format(#hits)
+    end
+    return hits[1]
+  end
+
+  local function releaseCaught(screen)
+    local game, mon = screen.game, screen.mon
+    local where, why = locateCaught(game, mon)
+    if not where then return false, why end
+    suppressPurchaseTracking = true
+    local addOk, refunded = pcall(Bag.add, game.save,
+      "CRYSTAL_BALL", 1, game.data)
+    suppressPurchaseTracking = false
+    if not addOk then return false, "refund error: " .. tostring(refunded) end
+    if not refunded then
+      return false, "BALL pocket full"
+    end
+
+    -- Revalidate after the refund and before the irreversible step.
+    if where.list[where.slot] ~= mon then
+      Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+      return false, "catch moved during review"
+    end
+
+    if GEN2 then
+      local ok, removed
+      if where.kind == "party" then
+        ok, removed = ReviewBoxes.releaseFromParty(game.save, where.slot)
+      else
+        ok, removed = ReviewBoxes.release(game.save, where.box, where.slot)
+      end
+      if not ok or removed ~= mon then
+        Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+        return false, "engine release refused exact catch"
+      end
+    else
+      local removed = table.remove(where.list, where.slot)
+      if removed ~= mon then
+        Bag.remove(game.save, "CRYSTAL_BALL", 1, game.data)
+        if removed then table.insert(where.list, where.slot, removed) end
+        return false, "release removed a different catch"
+      end
+    end
+    return true
+  end
+
+  local function speciesDef(screen)
+    local data = screen.game and screen.game.data
+    return data and data.pokemon and data.pokemon[screen.mon.species]
+  end
+
+  local function moveLine(screen, move)
+    if not move then return "-" end
+    if type(move) == "string" then move = { id = move } end
+    local data = screen.game and screen.game.data
+    local def = data and data.moves and data.moves[move.id]
+    local name = (def and def.name) or move.id or "-"
+    local pp = tonumber(move.pp) or 0
+    local maxPp = tonumber(move.maxPp)
+    if not maxPp then
+      local base = tonumber(def and def.pp) or 0
+      local ups = tonumber(move.ppUps) or 0
+      maxPp = base + ups * math.floor(base / 5)
+    end
+    return fit(name, 10) .. " " .. tostring(pp) .. "/" .. tostring(maxPp)
+  end
+
+  function CrystalReview.new(game, opts)
+    local record = opts and opts.record or {}
+    return setmetatable({
+      game = game, mon = record.mon or {}, page = 1, choice = 1,
+      armed = false, confirm = false, message = nil,
+    }, CrystalReview)
+  end
+
+  function CrystalReview:close()
+    if self.game and self.game.stack then self.game.stack:pop() end
+  end
+
+  function CrystalReview:update()
+    if not self.armed then self.armed = true return end
+    local input = self.game and self.game.input
+    local pressed = function(key)
+      return input and input.wasPressed and input:wasPressed(key)
+    end
+    if self.message then
+      if pressed("a") or pressed("b") then self:close() end
+      return
+    end
+    if self.confirm then
+      if pressed("b") then self.confirm = false return end
+      if pressed("a") then
+        local ok, why = releaseCaught(self)
+        if ok then
+          self.message = { "Ball returned.", "POKEMON released." }
+        else
+          Runtime.reportError("kanto_balls",
+            "CRYSTAL release: " .. tostring(why))
+          self.message = { "Release failed.", "POKEMON kept." }
+        end
+      end
+      return
+    end
+    if pressed("left") or pressed("right") then
+      self.page = self.page == 1 and 2 or 1
+    elseif pressed("up") or pressed("down") then
+      self.choice = self.choice == 1 and 2 or 1
+    elseif pressed("b") then
+      self:close()
+    elseif pressed("a") then
+      if self.choice == 1 then self:close() else self.confirm = true end
+    end
+  end
+
+  function CrystalReview:draw()
+    Chrome.box(0, 0, 20, 18)
+    Chrome.print("CRYSTAL VIEW", 1, 1)
+    local mon = self.mon or {}
+    local def = speciesDef(self) or {}
+    if self.page == 1 then
+      Chrome.print(fit(mon.nickname or def.name or mon.species, 18), 1, 3)
+      Chrome.print(fit(def.name or mon.species, 11)
+        .. " Lv" .. tostring(mon.level or 0), 1, 4)
+      if GEN2 then
+        local traits = {}
+        if mon.shiny == true or ReviewMon.vanillaShiny(mon.dvs or {}) then
+          traits[#traits + 1] = "SHINY"
+        end
+        local gender = mon.gender
+          or ReviewMon.vanillaGender(def, mon.dvs or {})
+        if gender and gender ~= "unknown" then
+          traits[#traits + 1] = tostring(gender):upper()
+        end
+        Chrome.print(fit(table.concat(traits, " "), 18), 1, 5)
+      end
+      local d = mon.dvs or {}
+      Chrome.print("DVs", 1, 7)
+      Chrome.print(("HP %02d AT %02d"):format(d.hp or 0, d.attack or 0), 1, 8)
+      Chrome.print(("DF %02d SP %02d"):format(d.defense or 0, d.speed or 0), 1, 9)
+      Chrome.print(("SC %02d"):format(d.special or 0), 1, 10)
+      Chrome.print("< MOVES >", 1, 12)
+    else
+      Chrome.print("MOVES / PP", 1, 3)
+      for i = 1, 4 do
+        Chrome.print(moveLine(self, mon.moves and mon.moves[i]), 1, 3 + i)
+      end
+      Chrome.print("< DETAILS >", 1, 12)
+    end
+    Chrome.print("KEEP", 3, 14)
+    Chrome.print("RELEASE", 3, 15)
+    Chrome.cursor(1, self.choice == 1 and 14 or 15)
+
+    if self.confirm then
+      Chrome.box(1, 5, 18, 6)
+      Chrome.print("Release it?", 2, 6)
+      Chrome.print("A:YES  B:NO", 2, 8)
+    elseif self.message then
+      Chrome.box(1, 5, 18, 6)
+      Chrome.print(self.message[1], 2, 6)
+      Chrome.print(self.message[2], 2, 8)
+    end
+  end
+
+  mod.content.screens:register("KbCrystalReview", { new = CrystalReview.new })
+
+  local crystalPushFailed = false
+  local function pushPendingCrystal(game)
+    local record = pendingCrystal[1]
+    if not record or record.game ~= game or crystalPushFailed then return false end
+    local ok, err = pcall(Screens.push, game, "KbCrystalReview",
+      { record = record })
+    if not ok then
+      crystalPushFailed = true
+      Runtime.reportError("kanto_balls", "CRYSTAL screen: " .. tostring(err))
+      return false
+    end
+    table.remove(pendingCrystal, 1)
+    return true
+  end
+
+  local function gen1Quiet(game)
+    local ow = game and game.overworld
+    if not (ow and game.stack and game.stack.top
+        and game.stack:top() == ow) then return false end
+    if ow.transitioning or ow.engaging or ow.emote then return false end
+    if ow.scriptMoves and #ow.scriptMoves > 0 then return false end
+    if ow.runner and ow.runner.isRunning and ow.runner:isRunning() then
+      return false
+    end
+    return true
+  end
+
+  if not GEN2 then
+    local Game = require("src.core.Game")
+    Game._kbOriginals = Game._kbOriginals or { update = Game.update }
+    local vanillaGameUpdate = Game._kbOriginals.update
+    Game.update = function(self, dt)
+      vanillaGameUpdate(self, dt)
+      if gen1Quiet(self) then pushPendingCrystal(self) end
+    end
   end
 
   ----------------------------------------------------------------------
@@ -1461,15 +2005,31 @@ return function(mod)
   -- rom_manifest_yellow.json -- Yellow renames objects on some maps, and
   -- a wrong constant fails SILENTLY (vanilla shelf, no error).
   ----------------------------------------------------------------------
-  local SHELF = { "NEST_BALL", "HEAL_BALL", "MIRROR_BALL" }
+  local SHELF = {
+    "NEST_BALL", "HEAL_BALL", "MIRROR_BALL", "LUXURY_BALL",
+  }
   if not GEN2 then SHELF[#SHELF + 1] = "FAST_BALL" end
+  if CANON_BALLS then
+    for _, id in ipairs({
+      "QUICK_BALL", "TIMER_BALL", "NET_BALL", "DUSK_BALL",
+      "REPEAT_BALL", "DREAM_BALL", "DIVE_BALL",
+    }) do
+      SHELF[#SHELF + 1] = id
+    end
+  end
 
-  -- [DEV] CHEAP BALLS puts the two dev balls on every ball shelf. With
-  -- the flag off they were never registered above, so there is nothing to
-  -- append and no shelf mentions them.
+  -- [DEV] CHEAP BALLS exposes the development and quest-artifact balls.
+  -- They remain registered with the flag off, but no ordinary shelf,
+  -- recipe or gift can produce them.
   if CHEAP then
-    SHELF[#SHELF + 1] = "GS_BALL"
+    -- Crystal's GS_BALL is a native story key item, not this mod's
+    -- throwable test ball. Never sell or move that record to BALLS.
+    if not NATIVE_GS_BALL then SHELF[#SHELF + 1] = "GS_BALL" end
     SHELF[#SHELF + 1] = "BEAST_BALL"
+    SHELF[#SHELF + 1] = "CAGE_BALL"
+    SHELF[#SHELF + 1] = "CRYSTAL_BALL"
+    SHELF[#SHELF + 1] = "STRANGE_BALL"
+    SHELF[#SHELF + 1] = "ORIGIN_BALL"
   end
 
   if not GEN2 then
@@ -1568,7 +2128,7 @@ return function(mod)
       if type(lists) ~= "table" then
         -- never fail silently: no mart table means no shelves, and the
         -- player would otherwise just see vanilla marts with no clue
-        Runtime.reportError("kanto_balls", "GOLD: mart table missing")
+        Runtime.reportError("kanto_balls", "GEN2: mart table missing")
         return
       end
 
@@ -1592,8 +2152,87 @@ return function(mod)
         end
       end
       if not stocked then
-        Runtime.reportError("kanto_balls", "GOLD: no ball shelf found")
+        Runtime.reportError("kanto_balls", "GEN2: no ball shelf found")
       end
+    end)
+  end
+
+  ----------------------------------------------------------------------
+  -- ###  DEV SCAFFOLDING -- APRICORNS ON EVERY GEN 2 SHELF  ###
+  --
+  -- RESTORED at 0.8.5.  This shipped at 0.4.10 and was stripped at
+  -- 0.4.25 as release prep, correctly at the time: it also sold the BALL
+  -- CASE for a token price, which undercut Kurt the moment his handover
+  -- started working.  The case is NOT on this shelf now -- his handover
+  -- is device-confirmed on Crystal at 0.8.4 -- and the apricorns are
+  -- what makes the craft tier testable at all.
+  --
+  -- WHY: every recipe spends apricorns, and the honest way to get one is
+  -- to give Kurt a fruit and wait a real day, per apricorn.  That is not
+  -- a test loop.  This puts all seven on every Gen 2 mart at 1 each.
+  --
+  -- Gated on [DEV] CHEAP BALLS rather than a switch of its own.  The
+  -- original reason -- Gen 2 boots did not persist option changes, so
+  -- every extra toggle cost a trip to a Red save -- was fixed engine-side
+  -- and confirmed on device 2026-08-29.  It stays folded in anyway: one
+  -- dev switch, everything dev.  Trivially separable if crafting work
+  -- ever wants apricorns without cheap balls.
+  --
+  -- Gen 2 only: apricorns are Gen 2 items and Gen 1 has none at all,
+  -- which is also why the craft tier is Gen 2-first.
+  --
+  -- Same discipline as the mart shelf above: presence-checked,
+  -- append-only, and it never touches a list it did not find an entry to
+  -- add to.  The price write mutates vanilla item records for the
+  -- session, which is exactly why this is fenced and dev-gated.
+  --
+  -- Ids are the cart's own abbreviations (BLU/YLW/WHT/BLK/PNK, not
+  -- BLUE/YELLOW/...), verified present in the imported Crystal item
+  -- table as well as Gold's.
+  ----------------------------------------------------------------------
+  if GEN2 and CHEAP then
+    local APRICORNS = {
+      "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+      "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+    }
+
+    mod.events:on("game.ready", function(p)
+      local data = p.game and p.game.data
+      if not data then return end
+
+      local priced = 0
+      for _, id in ipairs(APRICORNS) do
+        local def = data.items and data.items[id]
+        if def then
+          def.price = 1
+          priced = priced + 1
+        end
+      end
+
+      local marts = data.gen2Marts
+      local lists = marts and (marts.lists or marts)
+      if type(lists) ~= "table" then
+        Runtime.reportError("kanto_balls", "DEV APRI: no marts")
+        return
+      end
+      local shelves = 0
+      for _, list in ipairs(lists) do
+        if type(list) == "table" then
+          local has = {}
+          for _, id in ipairs(list) do has[id] = true end
+          for _, id in ipairs(APRICORNS) do
+            if not has[id] and data.items and data.items[id] then
+              list[#list + 1] = id
+              has[id] = true
+            end
+          end
+          shelves = shelves + 1
+        end
+      end
+      -- Names what it did: "the shelf looks the same" must be
+      -- distinguishable from "the option has not taken effect yet".
+      Runtime.reportError("kanto_balls",
+        ("DEV APRI %d/%d %dsh"):format(priced, #APRICORNS, shelves))
     end)
   end
 
@@ -2094,6 +2733,18 @@ return function(mod)
         end
       end
 
+      -- A caught Pokemon has already passed through nickname/party/box
+      -- flow by the time the world is quiet. Gen 2 has no overworld state
+      -- on the stack during ordinary play, so an empty stack plus the
+      -- engine's own World:busy() guard is the safe review seam.
+      local crystalWorld = self.world
+      local crystalStack = self.stack
+      local crystalQuiet = self.phase == "play"
+        and crystalWorld and crystalWorld.map
+        and crystalWorld.busy and not crystalWorld:busy()
+        and crystalStack and crystalStack.top and crystalStack:top() == nil
+      if crystalQuiet and pushPendingCrystal(self) then return end
+
       if not pendingCase then return end
       pendingCase = false
       local ok, err = pcall(Screens.push, self, "KbBallCase")
@@ -2127,19 +2778,177 @@ return function(mod)
   -- and Gen 2 flags are numeric-only, so "the well is done" is not
   -- readable by name.  Reading the conversation instead needs no flag.
   --
-  -- TODO/CONFIRM on device: that KURT_SCRIPT is KURT and not his
-  -- granddaughter.  It came off the 0.4.13 probe (map 8:4 =
-  -- KURTS_HOUSE, object 2) and the house holds more than one person --
-  -- though the 0.4.19 probe run makes this near-certain, since the
-  -- script it captured walks object 2 out of the house and later hands
-  -- over an item, which is Kurt's part and nobody else's.
+  -- Kurt's script pool differs between Gold/Silver and Crystal, so the
+  -- identity is resolved from the running game's KURTS_HOUSE object data
+  -- rather than baking in a key observed on one ROM lineage.
   ----------------------------------------------------------------------
   if GEN2 then
-    -- ROM-derived, read from the running game with the 0.4.13 probe and
-    -- never guessed.  If Gold's script pool is ever re-walked this may
-    -- move, so the handover reports to [ERRS] when it fires rather than
-    -- being invisible either way.
-    local KURT_SCRIPT = "55:45e3"
+    -- KURT'S SCRIPT KEYS -- PLURAL, and that is the whole of the 0.8.2
+    -- fix.  His house holds TWO SPRITE_KURT objects in every Gen 2 game:
+    -- index 1 at his counter and index 4 across the room.  0.8.0 asked
+    -- for EXACTLY ONE candidate, found two everywhere, and resolved to
+    -- nil -- so the handover was dead on Gold and Silver as well as
+    -- Crystal, not only on Crystal as first reported.
+    --
+    -- Read off the imported map data rather than guessed:
+    --   Gold      both objects carry "55:45e3" -- one key, two rows
+    --   Crystal   index 1 is "63:6178", index 4 is "63:63bd"
+    -- so neither "pick the only one" nor "pick a lineage's key" works.
+    --
+    -- Match ANY of his scripts instead.  Widening the identity does not
+    -- widen the gate: the bag diff below is what decides the moment
+    -- counted, and only the counter Kurt's post-rescue branch gives
+    -- anything (Crystal 63:6178 -> 63:61bf, verbosegiveitem LURE BALL).
+    -- The other Kurt script is small talk with no item in any branch.
+    local KURT_SCRIPTS = {}
+    local kurtIdentityReported = false
+
+    -- DEVICE PROBE, 0.8.3.  0.8.2 fixed a real bug -- 0.8.1's resolver
+    -- could not have worked on any ROM -- and the case still does not
+    -- arrive, so an assumption further down is also false and none of
+    -- the ones left can be settled from the extracted data: they are all
+    -- about what the VM actually emits during his conversation.
+    --
+    -- So this reports the run to [ERRS] instead of guessing again.  Rows
+    -- are terse because that screen wraps at 16 columns over 11 rows and
+    -- every other mod is writing to it too.  KURT_PROBE = false turns
+    -- the whole thing off in one line once the answer is in.
+    -- OFF: the handover is device-confirmed on Crystal (0.8.4, "E kurt
+    -- CASE OK").  The machinery stays because this bug took four rounds
+    -- and the next Gen 2 game or engine bump may need it again -- flip
+    -- this to true and the rows come back.
+    local KURT_PROBE = false
+    local probeLeft = 10
+    local function probe(msg)
+      if not KURT_PROBE or probeLeft <= 0 then return end
+      probeLeft = probeLeft - 1
+      Runtime.reportError("kanto_balls", msg)
+    end
+
+    -- KURT'S HOUSE IS GROUP 8, MAP 4 in Gold and in Crystal (read from
+    -- the imported map records, both lineages agree).  The probe reports
+    -- every script that runs in that room, whoever owns it, because "the
+    -- key we match is not the key his talk runs under" and "no script
+    -- event arrives at all" are different failures and look identical
+    -- from here.
+    local function inKurtsHouse(ctx)
+      return ctx and ctx.mapGroup == 8 and ctx.mapNumber == 4
+    end
+
+    local function isKurtScript(ctx)
+      local key = ctx and ctx.scriptKey
+      return type(key) == "string" and KURT_SCRIPTS[key] == true
+    end
+
+    ----------------------------------------------------------------------
+    -- THE RESCUE FLAG, and why the gate moved onto it at 0.8.4.
+    --
+    -- The probe answered it: identity resolved (n2, 63:6178 matched), the
+    -- snapshot survived, the conversation completed -- and the bag diff
+    -- said `!gift`, twice.  Kurt was giving nothing, because this save is
+    -- PAST the gift.  His script checks event 53 ("already handed over
+    -- the LURE BALL") before event 43 ("the well is done") and takes the
+    -- 53 branch, which gives nothing.
+    --
+    -- So "did he give me something" was never the condition.  It was a
+    -- proxy for "is this the return from Slowpoke Well", and it is a
+    -- proxy that expires: anyone who cleared the well before installing
+    -- this mod -- or while these three builds were broken -- can never
+    -- satisfy it.  The case would have been permanently unobtainable for
+    -- them, silently, which is exactly the shape of the bug this whole
+    -- chain has been.
+    --
+    -- The flag is the real condition.  It is set when the well is
+    -- cleared and stays set, so it is retroactive: the very next time
+    -- such a save talks to Kurt, the case arrives.
+    --
+    -- ITS NUMBER IS READ, NOT BAKED IN.  Gold and Crystal happen to
+    -- agree on 43 today, and that is worth nothing -- 0.8.0 baked in a
+    -- key on exactly that reasoning and this is round four of the same
+    -- mistake.  Instead, walk his own script for the `checkevent` whose
+    -- `iftrue` branch contains the give, and use whatever event that
+    -- names.  If the walk finds nothing the bag diff still stands as the
+    -- fallback, so a ROM shaped differently is no worse off than before.
+    local KURT_FLAG = nil
+
+    local function scriptGives(scripts, key, depth)
+      if type(key) ~= "string" or depth > 3 then return false end
+      local rows = scripts[key]
+      if type(rows) ~= "table" then return false end
+      for _, row in ipairs(rows) do
+        local op = row and row.op
+        if op == "verbosegiveitem" or op == "verbosegiveitemvar"
+            or op == "giveitem" then
+          return true
+        end
+        if (op == "iftrue" or op == "iffalse" or op == "sjump")
+            and scriptGives(scripts, row.script, depth + 1) then
+          return true
+        end
+      end
+      return false
+    end
+
+    local function findKurtFlag(scripts)
+      if type(scripts) ~= "table" then return nil end
+      for key in pairs(KURT_SCRIPTS) do
+        local rows = scripts[key]
+        if type(rows) == "table" then
+          local pending = nil
+          for _, row in ipairs(rows) do
+            local op = row and row.op
+            if op == "checkevent" then
+              pending = row.event
+            elseif op == "iftrue" then
+              if pending and scriptGives(scripts, row.script, 1) then
+                return pending
+              end
+              pending = nil
+            end
+          end
+        end
+      end
+      return nil
+    end
+
+    -- TRUE once the well is done.  A missing flag, a missing overworld or
+    -- a failed read all answer "no", which falls through to the bag diff
+    -- rather than handing the case out on a bad read.
+    local function rescueDone()
+      if not KURT_FLAG then return false end
+      local world = mod.world
+      if not world or not world.getFlag then return false end
+      local ok, value = pcall(world.getFlag, world, KURT_FLAG)
+      return ok and value == true
+    end
+
+    mod.events:on("game.ready", function(p)
+      KURT_SCRIPTS = {}
+      KURT_FLAG = nil
+      local found = 0
+      local firstKey = nil
+      local data = p and p.game and p.game.data
+      local maps = data and data.gen2Maps
+      local house = maps and maps.KURTS_HOUSE
+      for _, obj in pairs((house and house.objects) or {}) do
+        if obj and obj.sprite == "SPRITE_KURT"
+            and type(obj.scriptKey) == "string" and obj.scriptKey ~= "" then
+          if not KURT_SCRIPTS[obj.scriptKey] then
+            found = found + 1
+            firstKey = firstKey or obj.scriptKey
+          end
+          KURT_SCRIPTS[obj.scriptKey] = true
+        end
+      end
+      KURT_FLAG = findKurtFlag(data and data.gen2Scripts)
+      probe(("KURT n%d f%s %s"):format(found, tostring(KURT_FLAG),
+        mod.save:get("caseGiven") and "DONE" or "OPEN"))
+      if found > 0 then return end
+      if not kurtIdentityReported then
+        kurtIdentityReported = true
+        Runtime.reportError("kanto_balls", "KURT identity: no scripts found")
+      end
+    end)
 
     -- WHEN THIS FIRES: the conversation in which KURT GIVES YOU
     -- SOMETHING.  That is the rescue conversation -- he hands over a
@@ -2182,8 +2991,19 @@ return function(mod)
 
     mod.events:on("script.started", function(p)
       local ctx = p and p.ctx
+      if inKurtsHouse(ctx) then
+        probe(("S %s %s"):format(tostring(ctx.scriptKey),
+          isKurtScript(ctx) and "K" or "-"))
+      end
+      -- ONLY a Kurt run clears the snapshot, deliberately.  The old code
+      -- wiped it on EVERY script.started, which meant any nested run
+      -- during his conversation -- a MAPCALLBACK_OBJECTS rebuild fired by
+      -- his own `disappear`, say, and his house HAS one in both lineages
+      -- -- silently discarded the snapshot and the compare below then
+      -- found nothing to compare.  A stale snapshot is harmless: every
+      -- Kurt run takes a fresh one right here.
+      if not isKurtScript(ctx) then return end
       kurtBag = nil
-      if not (ctx and ctx.scriptKey == KURT_SCRIPT) then return end
       if mod.save:get("caseGiven") then return end
       local save = mod.game and mod.game.save
       local inv = save and save.inventory
@@ -2195,36 +3015,60 @@ return function(mod)
 
     mod.events:on("script.ended", function(p)
       local ctx = p and p.ctx
+      if inKurtsHouse(ctx) and not isKurtScript(ctx) then
+        probe(("E %s -"):format(tostring(ctx.scriptKey)))
+      end
+      if not isKurtScript(ctx) then return end
       local snap = kurtBag
       kurtBag = nil
-      if not (ctx and ctx.scriptKey == KURT_SCRIPT) then return end
-      if not p.completed then return end
-      if not snap then return end
-      if mod.save:get("caseGiven") then return end
+
+      -- Every bail below says WHY on the probe build.  A silent return is
+      -- what made this cost two rounds: the failure and the fix look the
+      -- same from the player's side, which is an empty pack either way.
+      if not p.completed then return probe("E kurt !done") end
+      if mod.save:get("caseGiven") then return probe("E kurt given") end
 
       local game = mod.game
       local save = game and game.save
-      if not save then return end
+      if not save then return probe("E kurt !save") end
 
-      -- Did anything in the bag go UP during his conversation?  Checked
-      -- before we add the case ourselves, so our own gift cannot be the
-      -- thing that satisfies the test.
+      -- The flag answers on its own, so a missing snapshot is only fatal
+      -- on the fallback path.
+      local rescued = rescueDone()
+      if not rescued and not snap then return probe("E kurt !snap") end
+
+      -- FALLBACK: did anything in the bag go UP during his conversation?
+      -- Checked before we add the case ourselves, so our own gift cannot
+      -- be the thing that satisfies the test.
       local gained = false
       for id, n in pairs(save.inventory or {}) do
-        if type(n) == "number" and n > (snap[id] or 0) then
+        if type(n) == "number" and n > ((snap and snap[id]) or 0) then
           gained = true
           break
         end
       end
-      if not gained then return end
+      -- EITHER answers "is this the return from the well". The flag is the
+      -- real condition and the one that works on a save already past the
+      -- gift; the bag diff stays as the fallback for a ROM whose script
+      -- the flag walk could not read.
+      if not (rescued or gained) then return probe("E kurt !gift") end
       -- Already carrying one (the dev shelf, or a previous save): mark
       -- it done rather than handing over a second.
       if (save.inventory and save.inventory[CASE_ID]) then
         mod.save:set("caseGiven", true)
-        return
+        return probe("E kurt hasone")
       end
-      if not Bag.add(save, CASE_ID, 1, game.data) then return end
+      if not Bag.add(save, CASE_ID, 1, game.data) then
+        return probe("E kurt !bagadd")
+      end
       mod.save:set("caseGiven", true)
+      probe("E kurt CASE OK")
+
+      -- A commemorative extra, only after the CASE itself is safely in
+      -- hand.  Failure is intentionally non-fatal: a full BALL pocket must
+      -- never undo or block the KEY ITEM handover.  We do not retry, so a
+      -- repeat conversation cannot duplicate a successful gift.
+      Bag.add(save, "CHERISH_BALL", 1, game.data)
 
       -- His coda, DEFERRED until the world is quiet -- see the drain in
       -- the Game2.update wrap above.  Queued rather than spoken here
@@ -2312,22 +3156,42 @@ return function(mod)
     CRADLE_BALL  = { body = { 184, 168, 216 }, accent = { 248, 232, 200 } },
     -- ACE: trophy blue under a gold band. TODO/CONFIRM on a real throw.
     ACE_BALL     = { body = {  56,  88, 176 }, accent = { 240, 192,  64 } },
+    -- First-pass canon colours. TODO/CONFIRM each on a real device throw.
+    LUXURY_BALL  = { body = {  32,  32,  40 }, accent = { 232, 192,  64 } },
+    CHERISH_BALL = { body = { 224,  48,  56 }, accent = {  88,  24,  40 } },
+    CAGE_BALL    = { body = {  48,  56,  72 }, accent = {  72, 208, 224 } },
+    CRYSTAL_BALL = { body = { 176, 224, 248 }, accent = { 248, 252, 255 } },
+    STRANGE_BALL = { body = { 160, 224, 176 }, accent = {  48, 152, 152 } },
+    ORIGIN_BALL  = { body = { 208,  48,  48 }, accent = { 240, 192,  64 } },
   }
   if not GEN2 then
     COLORS.MOON_BALL = { body = {  60,  68, 128 }, accent = { 232, 208,  96 } }
     COLORS.FAST_BALL = { body = { 232, 148,  48 }, accent = { 248, 232, 152 } }
   end
+  if CANON_BALLS then
+    -- First-pass body/accent pairs. TODO/CONFIRM every one on device.
+    COLORS.QUICK_BALL  = { body = { 72,176,232 }, accent = { 240,208, 64 } }
+    COLORS.TIMER_BALL  = { body = {232,232,240 }, accent = { 200, 64, 72 } }
+    COLORS.NET_BALL    = { body = { 72,160,176 }, accent = {  32, 72, 96 } }
+    COLORS.DUSK_BALL   = { body = { 64,120, 72 }, accent = {  32, 40, 48 } }
+    COLORS.REPEAT_BALL = { body = {232,176, 48 }, accent = { 208, 56, 56 } }
+    COLORS.DREAM_BALL  = { body = {224,144,200 }, accent = { 120, 72,152 } }
+    COLORS.DIVE_BALL   = { body = { 64,136,216 }, accent = { 176,224,248 } }
+  end
 
-  -- GS and BEAST are registered on every boot now, so their colours are
-  -- too: Pokeball Colors 0.1.13+ warns about a registered ball carrying
-  -- no colour, and a ball held from an earlier dev session should look
-  -- like itself whether or not the flag is on today.
+  -- BEAST is registered on every boot, and GS is registered everywhere
+  -- except Crystal, whose native story item owns that id. Their colours
+  -- follow the same ownership boundary: Pokeball Colors 0.1.13+ warns
+  -- about a registered ball carrying no colour, but we must not claim a
+  -- colour for an item that belongs to the cart.
   do
     -- GS: the gold-and-silver ball, so gold body against a silver band.
     -- pale gold against silver.  The old 224,188,76 was 2.2 dE from
     -- Custom Poke Balls' LEVEL BALL and 14.6 from the native ULTRA --
     -- lifting the value clears both, and reads more "gold AND silver".
-    COLORS.GS_BALL = { body = { 248, 224, 160 }, accent = { 216, 220, 228 } }
+    if not NATIVE_GS_BALL then
+      COLORS.GS_BALL = { body = { 248, 224, 160 }, accent = { 216, 220, 228 } }
+    end
     -- BEAST: Ultra Beast livery -- deep blue with the yellow flash.
     -- near-black navy under the yellow flash.  At 44,72,148 it was 10.2
     -- dE from our own MOON BALL and crowded GREAT and SILPH too; dropping
@@ -2427,7 +3291,32 @@ return function(mod)
     -- ACE is the one craft ball still unseen, because it stays hidden
     -- until Route Aces unlocks the recipe.
     PAL_KB_ACE     = { {255,255,255}, {240,192, 64}, { 56, 88,176}, {24,24,24} },
+    -- First-pass canon rows. Third entry is always the body tone.
+    -- TODO/CONFIRM both on a real Gold throw.
+    PAL_KB_LUXURY  = { {255,255,255}, {232,192, 64}, { 32, 32, 40}, {24,24,24} },
+    PAL_KB_CHERISH = { {255,255,255}, {248,128,128}, {224, 48, 56}, {24,24,24} },
+    PAL_KB_CAGE    = { {255,255,255}, { 72,208,224}, { 48, 56, 72}, {24,24,24} },
+    PAL_KB_CRYSTAL = { {255,255,255}, {248,252,255}, {176,224,248}, {24,24,24} },
+    PAL_KB_STRANGE = { {255,255,255}, {160,224,176}, { 48,152,152}, {24,24,24} },
+    PAL_KB_ORIGIN  = { {255,255,255}, {240,192, 64}, {208, 48, 48}, {24,24,24} },
   }
+  if CANON_BALLS then
+    -- First-pass canon rows. TODO/CONFIRM every one on a real Gold throw.
+    BALL_PALETTE_ROWS.PAL_KB_QUICK =
+      { {255,255,255}, {240,208, 64}, { 72,176,232}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_TIMER =
+      { {255,255,255}, {255,255,255}, {232,232,240}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_NET =
+      { {255,255,255}, {128,216,224}, { 72,160,176}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_DUSK =
+      { {255,255,255}, {120,176,104}, { 64,120, 72}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_REPEAT =
+      { {255,255,255}, {248,216, 96}, {232,176, 48}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_DREAM =
+      { {255,255,255}, {248,200,232}, {224,144,200}, {24,24,24} }
+    BALL_PALETTE_ROWS.PAL_KB_DIVE =
+      { {255,255,255}, {176,224,248}, { 64,136,216}, {24,24,24} }
+  end
   -- ball id -> palette name.  MOON and FAST are deliberately ABSENT: they
   -- are the cart's own Kurt balls on Gold and already get real colours
   -- there, which is what a Gold player expects them to look like.  We do
@@ -2444,7 +3333,22 @@ return function(mod)
     KECLEON_BALL = "PAL_KB_KECLEON",
     CRADLE_BALL  = "PAL_KB_CRADLE",
     ACE_BALL     = "PAL_KB_ACE",
+    LUXURY_BALL  = "PAL_KB_LUXURY",
+    CHERISH_BALL = "PAL_KB_CHERISH",
+    CAGE_BALL    = "PAL_KB_CAGE",
+    CRYSTAL_BALL = "PAL_KB_CRYSTAL",
+    STRANGE_BALL = "PAL_KB_STRANGE",
+    ORIGIN_BALL  = "PAL_KB_ORIGIN",
   }
+  if CANON_BALLS then
+    BALL_PALETTES.QUICK_BALL  = "PAL_KB_QUICK"
+    BALL_PALETTES.TIMER_BALL  = "PAL_KB_TIMER"
+    BALL_PALETTES.NET_BALL    = "PAL_KB_NET"
+    BALL_PALETTES.DUSK_BALL   = "PAL_KB_DUSK"
+    BALL_PALETTES.REPEAT_BALL = "PAL_KB_REPEAT"
+    BALL_PALETTES.DREAM_BALL  = "PAL_KB_DREAM"
+    BALL_PALETTES.DIVE_BALL   = "PAL_KB_DIVE"
+  end
   do
     -- GS: the pale cream carried over from Gen 1 did not read as GOLD on
     -- device (0.4.2 report), because on Gen 1 the pale value was there to
@@ -2452,11 +3356,13 @@ return function(mod)
     -- palette set does not have.  So: a real saturated gold on pal2, with
     -- the silver as the lighter tone above it, which is the "gold AND
     -- silver" reading the ball is named for.
-    BALL_PALETTE_ROWS.PAL_KB_GS =
-      { {255,255,255}, {232,236,240}, {224,168, 32}, {24,24,24} }
+    if not NATIVE_GS_BALL then
+      BALL_PALETTE_ROWS.PAL_KB_GS =
+        { {255,255,255}, {232,236,240}, {224,168, 32}, {24,24,24} }
+    end
     BALL_PALETTE_ROWS.PAL_KB_BEAST =
       { {255,255,255}, {244,216, 72}, { 16, 24, 56}, {24,24,24} }
-    BALL_PALETTES.GS_BALL = "PAL_KB_GS"
+    if not NATIVE_GS_BALL then BALL_PALETTES.GS_BALL = "PAL_KB_GS" end
     BALL_PALETTES.BEAST_BALL = "PAL_KB_BEAST"
   end
 

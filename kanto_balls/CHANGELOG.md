@@ -10,6 +10,214 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.7
+
+**Updating from 0.6.1?** This is a big one. Too Many Balls now runs on
+**Silver and Crystal** as well as Gold, and brings eleven new balls, an
+Apricorn workbench you get from Kurt, and a Ball Case that stores the
+whole collection so it stops eating your pack.
+
+**Eleven new balls.**
+- **Nine canon balls.** Quick, Timer, Net, Dusk, Repeat, Dream and Dive
+  join the Gen 2 mart shelves for ¥1000 each, every one with a shop
+  description that tells you what it does before you buy. Luxury Ball is
+  ¥3000 in both generations and starts your catch friendlier. Cherish
+  Ball is never sold -- Kurt gives you one.
+- **Four quest balls** that stories can hand out: Cage, Crystal, Strange
+  and Origin. They are not for sale and do not appear in normal play.
+- If you run **Custom Poké Balls**, it keeps Quick/Timer/Net/Dusk/Repeat/
+  Dream/Dive on Gen 1 and this mod stands aside; turn **CANON BALL SET**
+  off if you would rather it stood aside everywhere.
+
+**Kurt and the Ball Case.** Return to Kurt after the Slowpoke Well and he
+hands over the **BALL CASE**, plus a Cherish Ball. Use it from your pack
+to mix Apricorns into five balls of its own -- Kecleon, Drift, Snare,
+Catalyst and Cradle -- and to stow the whole collection out of your pack
+and take it back later. A full pack returns what fits and keeps the rest;
+nothing is ever lost. **If you cleared the well long ago, just talk to him
+once and the case arrives.**
+
+**Also.**
+- **Silver and Crystal** get everything Gold has: shelves, descriptions,
+  ball pockets, colours and catch behaviour. Crystal's own GS Ball and
+  its Celebi quest are left completely alone.
+- Your pack grows by one slot per ball this mod can actually give you.
+- Every catch remembers which ball caught it, so Pokéball Colors can
+  colour the healing machine to match.
+
+**New in 0.8.7 specifically:**
+- Documented something that was never written down: **changing an option
+  takes effect the next time the game loads, not straight away.** The
+  setting saves immediately, but which balls exist, what they cost and
+  which shelves carry them are decided when the mod loads. This matters
+  most for **CANON BALL SET** -- toggle it, quit fully, relaunch.
+- Everything in 0.8.6 below, which was never published separately.
+
+## 0.8.6
+
+- Kurt's handover and the developer Apricorn shelf confirmed working on
+  Crystal; the temporary **[ERRS]** diagnostic that found the handover bug
+  is switched off.
+- Mod options set on a Gen 2 boot **do** persist now; older notes telling
+  you to set them from a Red boot are out of date and have been removed.
+- The Ball Case, the canon set and Luxury Ball were still described as
+  Gold-only in places. They have worked on all three Gen 2 games since
+  0.8.0.
+
+## 0.8.5
+
+Test build.
+
+- **Kurt's Ball Case handover is confirmed working on Crystal.** No
+  change to it here.
+- **Restored: with [DEV] CHEAP BALLS on, all seven Apricorns are sold at
+  every Gen 2 mart for 1.** This existed at 0.4.10 and was removed during
+  release prep at 0.4.25. Every recipe spends Apricorns, and the honest
+  way to get one is to hand Kurt a fruit and wait a real day per
+  Apricorn, which is not a way to test a crafting tier.
+- The Ball Case itself is **not** back on that shelf. It rode along until
+  0.4.25 and undercut Kurt; his handover is the earned source now.
+- The **[ERRS]** diagnostic from 0.8.3 is still on in this build.
+
+## 0.8.4
+
+Test build. The third and, on the evidence, the real fix.
+
+- **Fixed: Kurt only handed over the Ball Case if he happened to give you
+  something during that exact conversation.** He gives the Lure Ball once,
+  on your return from Slowpoke Well, and never again -- so any save that
+  cleared the well before installing this mod, or during the broken 0.8.0
+  to 0.8.3 builds, could never get the case at all. The case now depends
+  on the well being done, which the game remembers permanently. Talk to
+  Kurt once and it arrives, however long ago you rescued him.
+- He still gives nothing before the well is cleared.
+- The **[ERRS]** diagnostic from 0.8.3 is still on in this build.
+
+## 0.8.3
+
+Test build. Kurt still did not hand over the Ball Case after 0.8.2, so
+this carries a second real fix and a diagnostic.
+
+- **Fixed: a nested script during Kurt's conversation threw away the
+  check that decides whether he gave you anything.** His house runs an
+  object-rebuild script of its own, and any run of it mid-conversation
+  reset the comparison, so the handover was abandoned without a word.
+- **Diagnostic:** while this build is installed, the **[ERRS]** screen
+  reports every script that runs in Kurt's house and, if the case still
+  does not arrive, the exact reason it was skipped. This is temporary and
+  comes out once the handover is confirmed on a device.
+- Also in 0.8.2: Kurt's identity is matched against every one of his
+  scripts. His house holds two Kurt objects in every Gen 2 game -- one
+  shared script on Gold and Silver, two different ones on Crystal -- and
+  0.8.0's "exactly one" test matched neither, which left the case
+  unobtainable in all three games.
+
+## 0.8.2
+
+**Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,
+four new quest-artifact balls, and support for Gold, Silver and Crystal
+alongside Red, Blue and Yellow. Cage, Crystal, Strange and Origin Balls
+remain hidden in normal play and appear for testing with **[DEV] CHEAP
+BALLS**.
+
+- **Fixed: Kurt never handed over the Ball Case.** In 0.8.0 and 0.8.1 he
+  said his piece on the way back from Slowpoke Well and gave you nothing,
+  in Gold and Silver as well as Crystal. Without the case there was no
+  Apricorn workbench and no Cherish Ball. He hands it over again now.
+  A save that already got past that conversation still works — talk to
+  him once more and the case arrives.
+- If you bought a Ball Case from the development shelf in the meantime,
+  Kurt notices and does not give you a second one.
+- Everything else below is unchanged from 0.8.1.
+
+## 0.8.1
+
+**Updating from 0.6.1?** This includes the complete 0.7 canon-ball set,
+four new quest-artifact balls, and the expanded Gold, Silver and Crystal
+support from 0.8.0. Cage, Crystal, Strange and Origin Balls remain hidden
+in normal play and appear for testing with **[DEV] CHEAP BALLS**.
+
+- **New in 0.8.1:** Too Many Balls now loads correctly in Crystal. Crystal
+  already owns `GS_BALL` as the story key item for its Celebi quest, so the
+  mod no longer tries to register, recolour or sell a second throwable item
+  under that ID there. The native GS Ball and its quest remain untouched.
+- The throwable Too Many Balls GS Ball remains available in Red, Blue,
+  Yellow, Gold and Silver, where no native item conflicts with it.
+- Added explicit Gold, Silver and Crystal regression checks for GS Ball
+  registration and development-shelf ownership.
+- Includes the nine-ball canon set from 0.7.0: Luxury and Cherish Balls on
+  both generations, plus Quick, Timer, Net, Dusk, Repeat, Dream and Dive
+  Balls on Gen 2 when **CANON BALL SET** is enabled.
+- Includes the 0.8.0 quest-artifact set: Cage Ball strengthens after failed
+  throws, Crystal Ball reviews and may safely release its exact catch,
+  Strange Ball rolls a different strength each throw, and Origin Ball is a
+  guaranteed wild catch for a single fateful encounter.
+- Gold, Silver and Crystal share mart descriptions, custom-ball pockets,
+  colours, catch behavior, the Ball Case and Kurt's gift.
+
+## 0.8.0
+
+**Updating from 0.6.1?** The complete 0.7 canon-ball set is included,
+and Too Many Balls now supports Gold, Silver and Crystal rather than Gold
+alone. Four quest-artifact balls are also ready for stories to award; they
+remain hidden in normal play and appear only with **[DEV] CHEAP BALLS**.
+
+- **Cage Ball:** inspired by Lawrence III's spiked cages. Its first throw
+  has normal odds, the second is 2× after one failed Cage Ball, and the
+  third is guaranteed after two failures in the same battle.
+- **Crystal Ball:** catches at normal odds, then opens a two-page review of
+  the exact catch with species, level, DVs, moves and PP. KEEP is the safe
+  default. RELEASE requires a second confirmation, returns the Crystal Ball
+  first, and removes only the exact newly caught party/box record. If the
+  refund or identity check fails, the Pokémon is kept and the error appears
+  in [ERRS].
+- **Strange Ball:** chooses 0.75×, 1×, 1.5× or 2× independently on each
+  real throw using the battle's own deterministic RNG.
+- **Origin Ball:** a guaranteed wild catch, intended for a single fateful
+  quest encounter.
+- The four artifact balls are registered, described and coloured on both
+  generations so quest mods can safely grant them, but have no ordinary
+  shelf, recipe or unlock. **[DEV] CHEAP BALLS** puts them on test shelves
+  for ¥1.
+- **Gold, Silver and Crystal now share the full feature set:** mart shelves,
+  descriptions, ball pockets, colours, catch behavior, BALL CASE and Kurt's
+  gift. Kurt is identified from each running game's map data instead of a
+  Gold-only script key; missing or ambiguous identity reports visibly.
+- The headless runtime suite now runs 1,000+ checks, including explicit
+  Gold/Silver/Crystal fixtures, every artifact catch outcome, Crystal Ball
+  party and box release, cancellation, full-pocket failure, duplicate
+  identity protection and quiet-frame screen timing.
+
+## 0.7.0
+
+**Updating from 0.6.1?** Gold gets seven familiar later-generation balls,
+Luxury and Cherish Balls join both games, and every new Gold mart entry now
+explains its effect in the shop. No recipes or existing ball effects changed.
+
+- **Seven canon balls come to Gold:** Quick, Timer, Net, Dusk, Repeat,
+  Dream and Dive Balls are sold beside Great and Ultra Balls for ¥1000.
+  Their effects use Gold's live battle, Pokédex, time-of-day and overworld
+  state rather than fixed species lists.
+- **Every new Gold ball has a mart description.** Each description is two
+  lines sized for Gold's 18-column item box, so the player can understand
+  the condition before buying.
+- **Luxury Ball** is sold at Great/Ultra marts in both generations for
+  ¥3000. It keeps normal catch odds; on Gold its catch starts at 120
+  happiness. This approximates its later-game friendship benefit because
+  engine 0.2.4 has no stable seam for doubling future happiness gains.
+- **Cherish Ball** has normal odds and is not sold. On Gold, Kurt gives one
+  only after the Ball Case safely enters KEY ITEMS. A full BALL pocket may
+  reject the bonus ball, but can never block or undo the case.
+- **Custom Poké Balls coexistence:** the seven shared ids intentionally
+  remain that mod's on Red. On Gold, Too Many Balls supplies them unless a
+  Gold version of Custom Poké Balls is loaded or **CANON BALL SET** is off.
+  Turning the option off while holding them moves their raw items to the
+  ITEMS pocket until the set is enabled again.
+- Bag headroom now matches the obtainable set: +8 on Red/Blue/Yellow and
+  +20 on Gold with the canon set, or +13 when the shared seven are deferred.
+  The [DEV] option still adds two more.
+- The new throw palettes are a first pass and still need device tuning.
+
 ## 0.6.1
 
 - **Remove Shop Events.** It was folded into Too Many Balls at 0.6.0 and

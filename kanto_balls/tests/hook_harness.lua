@@ -34,7 +34,7 @@ end
 -- Every engine module main.lua requires.  Each one only needs the members
 -- the mod actually touches; anything missing shows up as a nil call, which
 -- is the entire point of the exercise.
-local function engineStubs(generation)
+local function engineStubs(generation, versionId, engineLine)
   local Bag = {
     add = function(save, id, qty)
       save.inventory[id] = (save.inventory[id] or 0) + (qty or 1)
@@ -57,6 +57,8 @@ local function engineStubs(generation)
     },
     ["src.core.GameVersion"] = {
       generation = function() return generation end,
+      get = function() return versionId or (generation == 2 and "gold" or "red") end,
+      engine = function() return engineLine or (generation == 2 and "gs" or "gen1") end,
     },
     -- The engine's Gen 1 ball set. NOT empty: the PREMIER award is gated
     -- on "is the thing bought a ball", and an empty table made every
@@ -68,6 +70,36 @@ local function engineStubs(generation)
     },
     ["src.pokemon.Pokemon"] = {
       heal = function(mon) mon.hp = 999 end,
+    },
+    ["src.pokemon.Boxes"] = {
+      COUNT = 12,
+      ensure = function(save)
+        save.boxes = save.boxes or {}
+        for i = 1, 12 do save.boxes[i] = save.boxes[i] or {} end
+        return save.boxes
+      end,
+    },
+    ["src.core.gen2.Boxes"] = {
+      NUM_BOXES = 14,
+      box = function(save, index)
+        save.boxes = save.boxes or {}
+        save.boxes[index] = save.boxes[index] or {}
+        return save.boxes[index]
+      end,
+      release = function(save, boxIndex, slot)
+        local boxes = save.boxes or {}
+        local box = boxes[boxIndex] or {}
+        if not box[slot] then return false, "missing" end
+        return true, table.remove(box, slot)
+      end,
+      releaseFromParty = function(save, slot)
+        if not (save.party and save.party[slot]) then return false, "missing" end
+        return true, table.remove(save.party, slot)
+      end,
+    },
+    ["src.battle.gen2.Mon"] = {
+      vanillaShiny = function() return false end,
+      vanillaGender = function() return "male" end,
     },
     ["src.battle.BattleState"] = {
       ballMissMessage = function() return "vanilla miss" end,
@@ -90,8 +122,12 @@ local function engineStubs(generation)
         local owned = save and save.player and save.player.badges
         return (owned and owned[badge]) and true or false
       end,
+      isSurfing = function(state)
+        return state == "surf" or state == "surf_pika"
+      end,
     },
     ["src.core.Game2"] = { update = function() end },
+    ["src.core.Game"] = { update = function() end },
     -- The purchase detection folded in from shop_events at 0.6.0 wraps
     -- BOTH Bag.add and Sound.play; without this stub the mod cannot even
     -- load, which is how the gap announced itself.
@@ -104,7 +140,7 @@ end
 
 -- The mod API surface, capturing everything the mod registers so the
 -- harness can call it back.
-local function makeModApi(options)
+local function makeModApi(options, foundMods)
   local rec = {
     options = options or {},
     events = {}, hooks = {}, registries = {}, exports = {},
@@ -115,6 +151,14 @@ local function makeModApi(options)
     local store = rec.registries[name]
     return {
       register = function(_, id, value)
+        -- Registry:register rejects a record already supplied by the cart.
+        -- Use the live pre-entry item table model so Crystal's native
+        -- GS_BALL reproduces the exact 0.8.0 startup failure.
+        local base = name == "items" and rec.modGame
+          and rec.modGame.data and rec.modGame.data.items
+        if base and base[id] ~= nil then
+          error(("%s already registered: %s"):format(name, id))
+        end
         if name == "screens" then rec.screens[id] = value end
         store[id] = value
       end,
@@ -150,7 +194,7 @@ local function makeModApi(options)
       info = function(_, ...) rec.logged[#rec.logged + 1] = { ... } end,
       warn = function(_, ...) rec.logged[#rec.logged + 1] = { ... } end,
     },
-    find = function() return nil end,
+    find = function(id) return foundMods and foundMods[id] or nil end,
     -- Real storage: the once-only guard on Kurt's handover is only
     -- meaningful if get/set actually round-trip.
     save = {
@@ -163,37 +207,103 @@ local function makeModApi(options)
   -- (src/mods/Loader.lua), so they are here too -- and mod.game must be
   -- swappable mid-test, which is what rec.modGame is for.
   rec.queued = {}
+  rec.worldLive = {
+    daytime = "DAY",
+    map = { def = { environment = "ROUTE" } },
+  }
+  -- Gen 2 event flags, as WorldAPI:getFlag hands them over: numeric ids,
+  -- and an unset flag reads false rather than nil.
+  rec.flags = {}
+  rec.defaultWorld = {
+    overworld = function() return rec.worldLive end,
+    getFlag = function(_, id) return rec.flags[id] == true end,
+    queueScript = function(_, rows)
+      rec.queued[#rec.queued + 1] = rows
+      return true
+    end,
+  }
   setmetatable(mod, { __index = function(_, key)
     if key == "game" then return rec.modGame end
-    if key == "world" then
-      return {
-        queueScript = function(_, rows)
-          rec.queued[#rec.queued + 1] = rows
-          return true
-        end,
-      }
-    end
+    if key == "world" then return rec.modWorld or rec.defaultWorld end
     return nil
   end })
   return mod, rec
 end
 
-local function fakeGame()
-  return {
+-- KURTS_HOUSE HOLDS TWO SPRITE_KURT OBJECTS, in every real Gen 2 game.
+-- This fixture used to carry one, which is exactly why the harness stayed
+-- green while 0.8.0/0.8.1 handed out no BALL CASE on any device: the
+-- resolver demanded a single candidate and every real ROM offers two.
+-- `kurtKey2` defaults to `kurtKey` because that is Gold and Silver's real
+-- shape (two objects, one shared key); Crystal passes a second, different
+-- key.
+local function fakeGame(kurtKey, kurtKey2)
+  local states = {}
+  local stack = {}
+  function stack:top() return states[#states] end
+  function stack:push(state) states[#states + 1] = state end
+  function stack:pop() return table.remove(states) end
+  stack._states = states
+  -- The cart's own apricorn records. Every Gen 2 game has all seven, and
+  -- the dev shelf is presence-checked against data.items -- so a fixture
+  -- without them silently proves nothing about it.
+  local vanillaItems = {}
+  for _, id in ipairs({
+    "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+    "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+  }) do
+    vanillaItems[id] = { id = id, price = 200, pocket = "ITEM" }
+  end
+  local game = {
     data = {
-      items = {}, pokemon = {},
+      items = vanillaItems, pokemon = {}, moves = {},
       gen2Marts = { lists = { { "POKE_BALL", "GREAT_BALL", "ULTRA_BALL" } } },
       gen2Palettes = { battleObjects = {} },
+      -- Kurt's script, in the shape both lineages really carry: check the
+      -- already-gifted flag, then the rescue flag, and the rescue branch
+      -- is the one holding verbosegiveitem. The mod reads the flag number
+      -- back out of this rather than baking in 43.
+      gen2Scripts = {
+        ["55:45e3"] = {
+          { op = "faceplayer" },
+          { op = "opentext" },
+          { op = "checkevent", event = 53 },
+          { op = "iftrue", script = "55:4637" },
+          { op = "checkevent", event = 43 },
+          { op = "iftrue", script = "55:462a" },
+          { op = "writetext", text = "55:47ee" },
+          { op = "end" },
+        },
+        ["55:4637"] = { { op = "writetext", text = "x" }, { op = "end" } },
+        ["55:462a"] = {
+          { op = "writetext", text = "y" },
+          { op = "promptbutton" },
+          { op = "verbosegiveitem", item = 160, quantity = 1 },
+          { op = "setevent", event = 53 },
+          { op = "end" },
+        },
+      },
+      gen2Maps = { KURTS_HOUSE = { objects = {
+        { index = 1, sprite = "SPRITE_KURT",
+          scriptKey = kurtKey or "55:45e3" },
+        { index = 2, sprite = "SPRITE_TWIN", scriptKey = "not-kurt" },
+        { index = 3, sprite = "SPRITE_SLOWPOKE", scriptKey = "also-not-kurt" },
+        { index = 4, sprite = "SPRITE_KURT",
+          scriptKey = kurtKey2 or kurtKey or "55:45e3" },
+      } } },
       text = {},
     },
     save = { inventory = {}, party = {}, pokedex = { caught = {}, seen = {} } },
-    stack = { pop = function() end, push = function() end },
+    stack = stack,
     input = { wasPressed = function(_, key) return key == _G.__PRESS end },
   }
+  game.phase = "play"
+  game.world = { map = {}, busy = function() return false end }
+  return game
 end
 
-local function loadMod(generation, options)
-  local stubs = engineStubs(generation)
+local function loadMod(generation, options, foundMods, versionId, engineLine)
+  local stubs = engineStubs(generation, versionId, engineLine)
   local realRequire = require
   _G.require = function(name)
     local stub = stubs[name]
@@ -202,7 +312,18 @@ local function loadMod(generation, options)
   end
   local chunk = assert(loadfile("main.lua"))
   local entry = chunk()
-  local mod, rec = makeModApi(options)
+  local mod, rec = makeModApi(options, foundMods)
+  -- The real Game2 has already loaded cart items before it runs entry chunks.
+  -- Crystal alone owns GS_BALL as a native story key item; modelling that
+  -- base record is what makes this harness catch the 0.8.0 collision.
+  if generation == 2 then
+    rec.modGame = { data = { items = {} } }
+    if versionId == "crystal" then
+      rec.modGame.data.items.GS_BALL = {
+        id = "GS_BALL", name = "GS BALL", pocket = "KEY_ITEM",
+      }
+    end
+  end
   -- Runtime.emit was a no-op stub, which was fine while shop_events was a
   -- separate mod and this one only LISTENED. Now that the emit side lives
   -- here too, a no-op would let the whole purchase path "pass" while
@@ -221,7 +342,8 @@ end
 for _, gen in ipairs({ 1, 2 }) do
   for _, cheap in ipairs({ false, true }) do
     local label = ("gen%d cheap=%s"):format(gen, tostring(cheap))
-    local ok, err, rec = loadMod(gen, { cheap_balls = cheap })
+    local ok, err, rec = loadMod(gen,
+      { cheap_balls = cheap, canon_balls = true })
     check(ok, label .. " entry chunk -> " .. tostring(err))
     if ok then
       -- every ball that got an items record must also have a colour, or
@@ -229,8 +351,73 @@ for _, gen in ipairs({ 1, 2 }) do
       local items = rec.registries.items or {}
       check(next(items) ~= nil, label .. " registered no items")
 
+      local canonOption
+      for _, row in ipairs(rec.optionRows or {}) do
+        if row.key == "canon_balls" then canonOption = row end
+      end
+      check(canonOption and canonOption.default == true,
+        label .. " CANON BALL SET option missing or not default-on")
+      check(canonOption and type(canonOption.description) == "string",
+        label .. " CANON BALL SET has no compatibility description")
+
+      local NEW_BALLS = {
+        "LUXURY_BALL", "CHERISH_BALL", "QUICK_BALL", "TIMER_BALL",
+        "NET_BALL", "DUSK_BALL", "REPEAT_BALL", "DREAM_BALL", "DIVE_BALL",
+      }
+      local GOLD_ONLY = {
+        "QUICK_BALL", "TIMER_BALL", "NET_BALL", "DUSK_BALL",
+        "REPEAT_BALL", "DREAM_BALL", "DIVE_BALL",
+      }
+      local ARTIFACT_BALLS = {
+        "CAGE_BALL", "CRYSTAL_BALL", "STRANGE_BALL", "ORIGIN_BALL",
+      }
+      for _, id in ipairs(NEW_BALLS) do
+        local record = items[id]
+        if gen == 1 and id ~= "LUXURY_BALL" and id ~= "CHERISH_BALL" then
+          check(record == nil, label .. " registered Gold-only " .. id)
+        else
+          check(record ~= nil, label .. " did not register " .. id)
+          if record then
+            local lines = {}
+            for line in tostring(record.description):gmatch("[^\n]+") do
+              lines[#lines + 1] = line
+              check(#line <= 18,
+                ("%s %s mart description is %d cols: %s")
+                  :format(label, id, #line, line))
+            end
+            check(#lines == 2,
+              label .. " " .. id .. " mart description is not two lines")
+          end
+        end
+      end
+      for _, id in ipairs(ARTIFACT_BALLS) do
+        local record = items[id]
+        check(record ~= nil, label .. " did not register artifact " .. id)
+        if record then
+          local lines = {}
+          for line in tostring(record.description):gmatch("[^\n]+") do
+            lines[#lines + 1] = line
+            check(#line <= 18,
+              ("%s %s description is %d cols: %s")
+                :format(label, id, #line, line))
+          end
+          check(#lines == 2,
+            label .. " " .. id .. " description is not two lines")
+        end
+      end
+      if gen == 1 then
+        local exported = {}
+        for _, id in ipairs(rec.exports.balls or {}) do exported[id] = true end
+        for _, id in ipairs(GOLD_ONLY) do
+          check(not exported[id], label .. " exported Gold-only " .. id)
+          check((rec.registries.balls or {})[id] == nil,
+            label .. " made a Gen 1 ball record for " .. id)
+        end
+      end
+
       -- game.ready listeners: the pocket stamp, the shelves, the colours
       local game = fakeGame()
+      rec.modGame = game
       for id in pairs(items) do
         game.data.items[id] = { id = id, price = 1 }
       end
@@ -248,6 +435,50 @@ for _, gen in ipairs({ 1, 2 }) do
             ("%s %s pocket=%s want %s")
               :format(label, id, tostring(def.pocket), want))
         end
+        local stock = {}
+        for _, id in ipairs(game.data.gen2Marts.lists[1]) do stock[id] = true end
+        check(stock.LUXURY_BALL, label .. " Gold mart lacks LUXURY BALL")
+        check(not stock.CHERISH_BALL,
+          label .. " Gold mart incorrectly sells CHERISH BALL")
+        for _, id in ipairs(GOLD_ONLY) do
+          check(stock[id], label .. " Gold mart lacks " .. id)
+        end
+        for _, id in ipairs(ARTIFACT_BALLS) do
+          check((stock[id] and true or false) == cheap,
+            label .. " artifact shelf gate wrong for " .. id)
+        end
+
+        -- THE DEV APRICORN SHELF. Restored at 0.8.5; it shipped at 0.4.10
+        -- and was stripped at 0.4.25 with no test to notice it had gone.
+        for _, id in ipairs({
+          "RED_APRICORN", "BLU_APRICORN", "YLW_APRICORN", "GRN_APRICORN",
+          "WHT_APRICORN", "BLK_APRICORN", "PNK_APRICORN",
+        }) do
+          check((stock[id] and true or false) == cheap,
+            label .. " apricorn dev shelf gate wrong for " .. id)
+          if cheap then
+            local def = game.data.items[id]
+            check(def and def.price == 1,
+              label .. " " .. id .. " is not priced 1 on the dev shelf")
+          end
+        end
+        -- The BALL CASE rode this shelf until 0.4.25 and must not again:
+        -- Kurt's handover is the earned source and works (0.8.4).
+        check(not stock.BALL_CASE,
+          label .. " the dev shelf sells the BALL CASE and undercuts Kurt")
+      end
+
+      if not cheap then
+        check(items.LUXURY_BALL and items.LUXURY_BALL.price == 3000,
+          label .. " LUXURY BALL price is not 3000")
+        check(items.CHERISH_BALL and items.CHERISH_BALL.price == 0,
+          label .. " CHERISH BALL should have no sale price")
+        if gen == 2 then
+          for _, id in ipairs(GOLD_ONLY) do
+            check(items[id] and items[id].price == 1000,
+              label .. " " .. id .. " price is not 1000")
+          end
+        end
       end
 
       -- pokemon.caught: HEAL restores, the mark gets written
@@ -255,6 +486,20 @@ for _, gen in ipairs({ 1, 2 }) do
         pcheck(label .. " pokemon.caught", fn,
           { ball = "HEAL_BALL", mon = { hp = 1, stats = { hp = 20 },
             moves = {}, status = "SLP" }, species = "PIDGEY", game = game })
+      end
+
+      local luxury = { hp = 1 }
+      for _, fn in ipairs(rec.events["pokemon.caught"] or {}) do
+        pcheck(label .. " luxury caught", fn,
+          { ball = "LUXURY_BALL", mon = luxury,
+            species = "EEVEE", game = game })
+      end
+      if gen == 2 then
+        check(luxury.happiness == 120,
+          label .. " LUXURY catch did not start at 120 happiness")
+      else
+        check(luxury.happiness == nil,
+          label .. " LUXURY wrote a non-existent Gen 1 happiness field")
       end
 
       -- shop.purchased: the Premier award path
@@ -337,6 +582,54 @@ for _, gen in ipairs({ 1, 2 }) do
       if gen == 1 then
         check(sawGen1Kecleon,
           label .. " KECLEON registered no gen1 attempt -- the buff is gone")
+        local balls = rec.registries.balls or {}
+        local cageBattle = {}
+        local function cageAttempt()
+          local ctx = {
+            battle = cageBattle, targetDef = { catchRate = BASE_RATE },
+            rng = function() return 1 end,
+            vanillaAttempt = function() return false, 1 end,
+          }
+          local caught, shakes = balls.CAGE_BALL.attempt(ctx)
+          return caught, shakes, ctx.rateOverride
+        end
+        local caught1, _, rate1 = cageAttempt()
+        check(caught1 == false and rate1 == nil,
+          label .. " first Gen1 CAGE throw was not 1x")
+        for _, fn in ipairs(rec.events["battle.ball_thrown"] or {}) do
+          fn({ ball = "CAGE_BALL", battle = cageBattle, caught = false })
+        end
+        local caught2, _, rate2 = cageAttempt()
+        check(caught2 == false and rate2 == 90,
+          label .. " second Gen1 CAGE throw was not 2x")
+        for _, fn in ipairs(rec.events["battle.ball_thrown"] or {}) do
+          fn({ ball = "CAGE_BALL", battle = cageBattle, caught = false })
+        end
+        local caught3, shakes3 = cageAttempt()
+        check(caught3 == true and shakes3 == 3,
+          label .. " third Gen1 CAGE throw was not guaranteed")
+
+        for index, want in ipairs({ 33.75, 45, 67.5, 90 }) do
+          local calls = 0
+          local ctx = {
+            targetDef = { catchRate = BASE_RATE },
+            rng = function(lo, hi)
+              calls = calls + 1
+              check(lo == 1 and hi == 4,
+                label .. " Gen1 STRANGE RNG range was not 1..4")
+              return index
+            end,
+            vanillaAttempt = function() return false, 1 end,
+          }
+          balls.STRANGE_BALL.attempt(ctx)
+          check(ctx.rateOverride == want,
+            label .. " Gen1 STRANGE multiplier outcome drifted")
+          check(calls == 1,
+            label .. " Gen1 STRANGE did not draw exactly once")
+        end
+        local originCaught, originShakes = balls.ORIGIN_BALL.attempt({})
+        check(originCaught == true and originShakes == 3,
+          label .. " Gen1 ORIGIN BALL was not guaranteed")
       end
 
       -- the Gen 2 catch.rate wrap, once per ball we own
@@ -378,6 +671,146 @@ for _, gen in ipairs({ 1, 2 }) do
         end
       end
 
+      -- Outcome coverage for every 0.7.0 Gold catch arm.  Each assertion
+      -- checks the rate byte the engine consumes, not merely that the hook
+      -- returned without crashing.
+      if gen == 2 and hook then
+        local function rateFor(ball, extra, def)
+          local o = { catchRate = BASE_RATE, species = "MAGIKARP",
+                      status = nil, battle = { turn = 2 } }
+          for k, v in pairs(extra or {}) do o[k] = v end
+          -- `battle = false` means REMOVE it. A nil in `extra` cannot say
+          -- that -- pairs() never yields a nil value, so the seeded default
+          -- silently survives and a "field absent" case ends up testing the
+          -- default instead of the absence. The first draft of the QUICK
+          -- no-battle check did exactly that and passed for the wrong reason.
+          if o.battle == false then o.battle = nil end
+          o.def = def or { types = { "NORMAL" } }
+          hook(function() return false, o.catchRate end,
+            ball, nil, o.def, o)
+          return o.catchRate
+        end
+
+        check(rateFor("QUICK_BALL", { battle = { turn = 1 } }) == 180,
+          label .. " QUICK BALL did not reach 4x on turn 1")
+        check(rateFor("QUICK_BALL", { battle = { turn = 2 } }) == BASE_RATE,
+          label .. " QUICK BALL stayed boosted after turn 1")
+        -- NO BATTLE AT ALL must not boost. The obvious spelling,
+        -- `(o.battle and o.battle.turn) or 0`, defaults to turn 0, which
+        -- satisfies `<= 1` -- so an engine that stops passing `battle`
+        -- would turn QUICK into a universal 4x and nothing here noticed:
+        -- this suite passed identically before and after that was fixed,
+        -- which is the whole reason the case is pinned now.
+        check(rateFor("QUICK_BALL", { battle = false }) == BASE_RATE,
+          label .. " QUICK BALL boosted with no battle in opts")
+        check(rateFor("QUICK_BALL", { battle = {} }) == BASE_RATE,
+          label .. " QUICK BALL boosted with a battle carrying no turn")
+        check(rateFor("TIMER_BALL", { battle = { turn = 0 } }) == BASE_RATE,
+          label .. " TIMER BALL was not 1x on turn 0")
+        check(rateFor("TIMER_BALL", { battle = { turn = 5 } }) == 90,
+          label .. " TIMER BALL did not reach 2x on turn 5")
+        check(rateFor("TIMER_BALL", { battle = { turn = 20 } }) == 180,
+          label .. " TIMER BALL did not cap at 4x on turn 20")
+        check(rateFor("NET_BALL", nil, { types = { "WATER" } }) == 135,
+          label .. " NET BALL missed literal WATER type")
+        check(rateFor("NET_BALL", nil, { types = { "BUG", "POISON" } }) == 135,
+          label .. " NET BALL missed literal BUG type")
+        check(rateFor("NET_BALL", nil, { types = { "FIRE" } }) == BASE_RATE,
+          label .. " NET BALL boosted an unrelated type")
+
+        rec.worldLive.daytime = "NITE"
+        rec.worldLive.map.def.environment = "ROUTE"
+        check(rateFor("DUSK_BALL") == 135,
+          label .. " DUSK BALL missed NITE")
+        rec.worldLive.daytime = "DAY"
+        rec.worldLive.map.def.environment = "CAVE"
+        check(rateFor("DUSK_BALL") == 135,
+          label .. " DUSK BALL missed CAVE")
+        rec.worldLive.map.def.environment = "DUNGEON"
+        check(rateFor("DUSK_BALL") == 135,
+          label .. " DUSK BALL missed DUNGEON")
+        rec.worldLive.map.def.environment = "ROUTE"
+        check(rateFor("DUSK_BALL") == BASE_RATE,
+          label .. " DUSK BALL boosted a daytime route")
+        rec.modWorld = {}
+        check(rateFor("DUSK_BALL") == BASE_RATE,
+          label .. " DUSK BALL failed with no live world")
+        rec.modWorld = nil
+
+        game.save.pokedex.caught.MAGIKARP = true
+        check(rateFor("REPEAT_BALL") == 135,
+          label .. " REPEAT BALL missed caught species")
+        game.save.pokedex.caught.MAGIKARP = nil
+        check(rateFor("REPEAT_BALL") == BASE_RATE,
+          label .. " REPEAT BALL boosted an uncaught species")
+
+        check(rateFor("DREAM_BALL", { status = "sleep" }) == 180,
+          label .. " DREAM BALL missed sleep")
+        check(rateFor("DREAM_BALL", { status = "SLP" }) == 180,
+          label .. " DREAM BALL missed SLP compatibility status")
+        check(rateFor("DREAM_BALL", { status = "freeze" }) == BASE_RATE,
+          label .. " DREAM BALL incorrectly boosted freeze")
+
+        check(rateFor("DIVE_BALL", { fishing = true }) == 135,
+          label .. " DIVE BALL missed fishing")
+        game.save.playerState = "surf"
+        check(rateFor("DIVE_BALL") == 135,
+          label .. " DIVE BALL missed surf")
+        game.save.playerState = "walk"
+        check(rateFor("DIVE_BALL") == BASE_RATE,
+          label .. " DIVE BALL boosted on land")
+
+        check(rateFor("LUXURY_BALL") == BASE_RATE,
+          label .. " LUXURY BALL changed catch odds")
+        check(rateFor("CHERISH_BALL") == BASE_RATE,
+          label .. " CHERISH BALL changed catch odds")
+        check(rateFor("CRYSTAL_BALL") == BASE_RATE,
+          label .. " CRYSTAL BALL changed its plain catch odds")
+
+        local cageBattle = {}
+        check(rateFor("CAGE_BALL", { battle = cageBattle }) == BASE_RATE,
+          label .. " first CAGE throw was not 1x")
+        for _, fn in ipairs(rec.events["battle.ball_thrown"] or {}) do
+          fn({ ball = "CAGE_BALL", battle = cageBattle, caught = false })
+        end
+        check(rateFor("CAGE_BALL", { battle = cageBattle }) == 90,
+          label .. " second CAGE throw was not 2x")
+        for _, fn in ipairs(rec.events["battle.ball_thrown"] or {}) do
+          fn({ ball = "CAGE_BALL", battle = cageBattle, caught = false })
+        end
+        do
+          local o = { catchRate = BASE_RATE, battle = cageBattle }
+          local caught, rate = hook(function() return false, o.catchRate end,
+            "CAGE_BALL", nil, nil, o)
+          check(caught == true and rate == 255,
+            label .. " third CAGE throw was not guaranteed")
+        end
+
+        for index, want in ipairs({ 33, 45, 67, 90 }) do
+          local calls = 0
+          local got = rateFor("STRANGE_BALL", { random = function(n)
+            calls = calls + 1
+            check(n == 4, label .. " STRANGE RNG range was not four")
+            return index - 1
+          end })
+          check(got == want,
+            ("%s STRANGE outcome %d was %s, expected %d")
+              :format(label, index, tostring(got), want))
+          check(calls == 1,
+            label .. " STRANGE did not draw exactly once")
+        end
+        check(rateFor("STRANGE_BALL", { random = false }) == BASE_RATE,
+          label .. " STRANGE did not fail closed without battle RNG")
+
+        do
+          local o = { catchRate = BASE_RATE }
+          local caught, rate = hook(function() return false, o.catchRate end,
+            "ORIGIN_BALL", nil, nil, o)
+          check(caught == true and rate == 255,
+            label .. " ORIGIN BALL was not guaranteed")
+        end
+      end
+
       -- BAG HEADROOM, asserted as a NUMBER on both generations.
       --
       -- 0.4.30 corrected this from "one slot per registered ball" to
@@ -390,10 +823,10 @@ for _, gen in ipairs({ 1, 2 }) do
         local Bag_ = rec.stubs["src.inventory.Bag"]
         local pocket = (gen == 2) and "BALL" or "ITEM"
         local base = (gen == 2) and 12 or 20
-        -- gen 1: 6 shelf balls + PREMIER.  gen 2: those, less MOON and
-        -- FAST which Gold owns natively, plus the 5 craft balls and ACE.
-        local want = (gen == 2) and 11 or 7
-        if cheap then want = want + 2 end          -- GS and BEAST
+        -- gen 1: seven shelf balls + PREMIER. Gold adds LUXURY, CHERISH,
+        -- the craft tier and the seven canon balls.
+        local want = (gen == 2) and 20 or 8
+        if cheap then want = want + 6 end -- GS, BEAST and four artifacts
         local got = Bag_.capacity({}, pocket)
         check(got == base + want,
           ("%s ball headroom: capacity %s, expected %d (%d + %d)")
@@ -548,6 +981,99 @@ for _, gen in ipairs({ 1, 2 }) do
         kurtTalk(rescue, KEY, "LURE_BALL")
         check(rescue.save.inventory.BALL_CASE == 1,
           label .. " KURT DID NOT GIVE THE CASE ON HIS RETURN")
+        check(rescue.save.inventory.CHERISH_BALL == 1,
+          label .. " KURT DID NOT GIVE ONE CHERISH BALL WITH THE CASE")
+
+        -- A NESTED SCRIPT DURING HIS CONVERSATION must not discard the
+        -- bag snapshot. KURTS_HOUSE carries a MAPCALLBACK_OBJECTS in both
+        -- lineages and a callback run emits its own started/ended pair
+        -- (Vm:runCallback), so this is not hypothetical -- and the old
+        -- code cleared the snapshot on EVERY script.started.
+        --
+        -- A FRESH LOAD, because `rec` has already handed out its case and
+        -- `caseGiven` would bail this run before the snapshot is read --
+        -- which would make the check pass for the wrong reason.
+        local okN, errN, recN = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okN, label .. " nested-script entry chunk -> " .. tostring(errN))
+        if okN then
+          local nested = fakeGame()
+          recN.modGame = nested
+          for _, fn in ipairs(recN.events["game.ready"] or {}) do
+            pcheck(label .. " nested ready", fn, { game = nested })
+          end
+          local startedN = recN.events["script.started"] or {}
+          local endedN = recN.events["script.ended"] or {}
+          for _, fn in ipairs(startedN) do
+            pcheck(label .. " nested kurt start", fn,
+              { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(startedN) do
+            pcheck(label .. " nested callback start", fn,
+              { ctx = { scriptKey = "55:45cd", kind = "callback" } })
+          end
+          for _, fn in ipairs(endedN) do
+            pcheck(label .. " nested callback end", fn,
+              { ctx = { scriptKey = "55:45cd", kind = "callback" },
+                completed = true })
+          end
+          nested.save.inventory.LURE_BALL = 1
+          for _, fn in ipairs(endedN) do
+            pcheck(label .. " nested kurt end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(nested.save.inventory.BALL_CASE == 1,
+            label .. " a nested script during Kurt's talk lost the snapshot")
+        end
+
+        -- A SAVE ALREADY PAST THE GIFT. Kurt hands over nothing, because
+        -- he handed the LURE BALL over before this mod was installed --
+        -- the device case that made 0.8.3 report `!gift` twice. The
+        -- rescue flag is set, so the case must still arrive.
+        local okR, errR, recR = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okR, label .. " retro entry chunk -> " .. tostring(errR))
+        if okR then
+          local retro = fakeGame()
+          recR.modGame = retro
+          recR.flags[43] = true
+          for _, fn in ipairs(recR.events["game.ready"] or {}) do
+            pcheck(label .. " retro ready", fn, { game = retro })
+          end
+          for _, fn in ipairs(recR.events["script.started"] or {}) do
+            pcheck(label .. " retro start", fn, { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(recR.events["script.ended"] or {}) do
+            pcheck(label .. " retro end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(retro.save.inventory.BALL_CASE == 1,
+            label .. " no case on a save already past Kurt's gift")
+        end
+
+        -- AND THE FLAG MUST NOT BE A FREE PASS. Same conversation, same
+        -- lack of a gift, flag clear: this is the pre-rescue Kurt and the
+        -- 0.4.14 bug if it awards.
+        local okP, errP, recP = loadMod(2, { cheap_balls = cheap,
+          canon_balls = true })
+        check(okP, label .. " pre-rescue entry chunk -> " .. tostring(errP))
+        if okP then
+          local pre = fakeGame()
+          recP.modGame = pre
+          for _, fn in ipairs(recP.events["game.ready"] or {}) do
+            pcheck(label .. " pre-rescue ready", fn, { game = pre })
+          end
+          for _, fn in ipairs(recP.events["script.started"] or {}) do
+            pcheck(label .. " pre-rescue start", fn,
+              { ctx = { scriptKey = KEY } })
+          end
+          for _, fn in ipairs(recP.events["script.ended"] or {}) do
+            pcheck(label .. " pre-rescue end", fn,
+              { ctx = { scriptKey = KEY }, completed = true })
+          end
+          check(pre.save.inventory.BALL_CASE == nil,
+            label .. " KURT GAVE THE CASE BEFORE THE WELL WAS CLEARED")
+        end
 
         -- ...and only ever once, however many gifts follow.
         kurtTalk(rescue, KEY, "MOON_BALL")
@@ -555,6 +1081,29 @@ for _, gen in ipairs({ 1, 2 }) do
         check(rescue.save.inventory.BALL_CASE == 1,
           ("%s kurt gave %s cases, want exactly 1")
             :format(label, tostring(rescue.save.inventory.BALL_CASE)))
+        check(rescue.save.inventory.CHERISH_BALL == 1,
+          ("%s kurt gave %s cherish balls, want exactly 1")
+            :format(label, tostring(rescue.save.inventory.CHERISH_BALL)))
+
+        -- A full BALL pocket may reject CHERISH, but that must never roll
+        -- back or block the KEY ITEM.  This models the two Bag.add calls
+        -- independently and proves the second one's failure is ignored.
+        rec.saveStore.caseGiven = nil
+        local Bag_ = rec.stubs["src.inventory.Bag"]
+        local liveAdd = Bag_.add
+        Bag_.add = function(save, id, qty, data)
+          if id == "CHERISH_BALL" then return false end
+          return liveAdd(save, id, qty, data)
+        end
+        local fullGift = fakeGame()
+        kurtTalk(fullGift, KEY, "LURE_BALL")
+        Bag_.add = liveAdd
+        check(fullGift.save.inventory.BALL_CASE == 1,
+          label .. " full BALL pocket blocked Kurt's CASE")
+        check(fullGift.save.inventory.CHERISH_BALL == nil,
+          label .. " failed CHERISH add nevertheless changed inventory")
+        check(rec.saveStore.caseGiven == true,
+          label .. " failed CHERISH add left the CASE handover unrecorded")
 
         -- THE CODA MUST NOT BE SPOKEN INSIDE script.ended.
         -- Reported from device at 0.4.20: both lines flashed past,
@@ -855,6 +1404,7 @@ for _, gen in ipairs({ 1, 2 }) do
                 full.save.inventory[id] = 9
               end
               local stocked = apricornTotal(full.save)
+              local restoreAdd = rec.stubs["src.inventory.Bag"].add
               rec.stubs["src.inventory.Bag"].add = function() return false end
               local okFull, s2 = pcall(newFn, full)
               if okFull and s2 then
@@ -870,11 +1420,316 @@ for _, gen in ipairs({ 1, 2 }) do
                 check(apricornTotal(full.save) == stocked,
                   label .. " FULL POCKET ATE THE APRICORNS")
               end
+              rec.stubs["src.inventory.Bag"].add = restoreAdd
             end
           end
         end
       end
+
+      -------------------------------------------- CRYSTAL BALL REVIEW
+      do
+        local factory = rec.screens.KbCrystalReview
+        local newFn = factory and ((type(factory) == "function") and factory
+          or factory.new)
+        check(type(newFn) == "function",
+          label .. " CRYSTAL review screen is not registered")
+        if type(newFn) == "function" then
+          local function addDisplayData(g)
+            g.data.pokemon.PIKACHU = { name = "PIKACHU" }
+            g.data.moves.THUNDERBOLT = { name = "THUNDERBOLT", pp = 15 }
+          end
+          local function press(screen, key)
+            _G.__PRESS = key
+            pcheck(label .. " crystal press " .. key, screen.update, screen)
+            _G.__PRESS = nil
+          end
+          local function reviewFor(g, mon)
+            local s = newFn(g, { record = { game = g, mon = mon } })
+            s:update() -- arm; the opening A press may not choose anything
+            return s
+          end
+
+          -- KEEP is the default and can never change storage.
+          local keepGame = fakeGame()
+          addDisplayData(keepGame)
+          local keepMon = { species = "PIKACHU", nickname = "SPARKY",
+            level = 12, dvs = { hp = 10, attack = 12, defense = 9,
+              speed = 15, special = 11 }, moves = {
+              { id = "THUNDERBOLT", pp = 12, maxPp = 15 },
+            } }
+          keepGame.save.party[1] = keepMon
+          local keep = reviewFor(keepGame, keepMon)
+          pcheck(label .. " crystal details draw", keep.draw, keep)
+          press(keep, "right")
+          pcheck(label .. " crystal moves draw", keep.draw, keep)
+          press(keep, "a")
+          check(keepGame.save.party[1] == keepMon,
+            label .. " KEEP changed the caught Pokemon")
+          check(keepGame.save.inventory.CRYSTAL_BALL == nil,
+            label .. " KEEP incorrectly refunded the ball")
+
+          -- RELEASE is two-step: selecting it only opens confirmation.
+          local releaseGame = fakeGame()
+          addDisplayData(releaseGame)
+          local releaseMon = { species = "PIKACHU", level = 8,
+            dvs = {}, moves = {} }
+          releaseGame.save.party[1] = releaseMon
+          local release = reviewFor(releaseGame, releaseMon)
+          press(release, "down")
+          press(release, "a")
+          check(releaseGame.save.party[1] == releaseMon,
+            label .. " selecting RELEASE removed before confirmation")
+          check(releaseGame.save.inventory.CRYSTAL_BALL == nil,
+            label .. " selecting RELEASE refunded before confirmation")
+          press(release, "b")
+          check(releaseGame.save.party[1] == releaseMon,
+            label .. " cancelling RELEASE changed the catch")
+          press(release, "a")
+          press(release, "a")
+          check(#releaseGame.save.party == 0,
+            label .. " confirmed RELEASE left the party catch")
+          check(releaseGame.save.inventory.CRYSTAL_BALL == 1,
+            label .. " confirmed RELEASE did not refund one ball")
+          check(release.message and release.message[2] == "POKEMON released.",
+            label .. " confirmed RELEASE gave no success message")
+
+          -- The same exact-identity rule works when vanilla boxed it.
+          local boxGame = fakeGame()
+          addDisplayData(boxGame)
+          local boxMon = { species = "PIKACHU", level = 9,
+            dvs = {}, moves = {} }
+          boxGame.save.boxes = { {}, { boxMon } }
+          local boxed = reviewFor(boxGame, boxMon)
+          press(boxed, "down")
+          press(boxed, "a")
+          press(boxed, "a")
+          check(#boxGame.save.boxes[2] == 0,
+            label .. " RELEASE left the exact boxed catch")
+          check(boxGame.save.inventory.CRYSTAL_BALL == 1,
+            label .. " boxed RELEASE did not refund one ball")
+
+          -- If the refund cannot fit, removal is forbidden.
+          local fullGame = fakeGame()
+          addDisplayData(fullGame)
+          local fullMon = { species = "PIKACHU", level = 10,
+            dvs = {}, moves = {} }
+          fullGame.save.party[1] = fullMon
+          local fullReview = reviewFor(fullGame, fullMon)
+          local liveAdd = rec.stubs["src.inventory.Bag"].add
+          rec.stubs["src.inventory.Bag"].add = function() return false end
+          press(fullReview, "down")
+          press(fullReview, "a")
+          press(fullReview, "a")
+          rec.stubs["src.inventory.Bag"].add = liveAdd
+          check(fullGame.save.party[1] == fullMon,
+            label .. " failed refund still removed the catch")
+          check(fullGame.save.inventory.CRYSTAL_BALL == nil,
+            label .. " failed refund changed inventory")
+          check(fullReview.message
+              and fullReview.message[2] == "POKEMON kept.",
+            label .. " failed refund did not say the catch was kept")
+
+          -- Ambiguous identity must fail safe before either mutation.
+          local duplicateGame = fakeGame()
+          addDisplayData(duplicateGame)
+          local duplicateMon = { species = "PIKACHU", level = 11,
+            dvs = {}, moves = {} }
+          duplicateGame.save.party = { duplicateMon, duplicateMon }
+          local duplicate = reviewFor(duplicateGame, duplicateMon)
+          press(duplicate, "down")
+          press(duplicate, "a")
+          press(duplicate, "a")
+          check(#duplicateGame.save.party == 2,
+            label .. " ambiguous identity removed a Pokemon")
+          check(duplicateGame.save.inventory.CRYSTAL_BALL == nil,
+            label .. " ambiguous identity refunded a ball")
+
+          -- pokemon.caught only queues; the screen waits for the engine's
+          -- generation-specific quiet-world condition.
+          local qGame = fakeGame()
+          addDisplayData(qGame)
+          local qMon = { species = "PIKACHU", level = 7,
+            dvs = {}, moves = {} }
+          qGame.save.party[1] = qMon
+          local Screens_ = rec.stubs["src.ui.Screens"]
+          for i = #Screens_._pushed, 1, -1 do Screens_._pushed[i] = nil end
+          for _, fn in ipairs(rec.events["pokemon.caught"] or {}) do
+            fn({ ball = "CRYSTAL_BALL", mon = qMon,
+              species = "PIKACHU", game = qGame })
+          end
+          if gen == 2 then
+            qGame.world.busy = function() return true end
+            rec.stubs["src.core.Game2"].update(qGame, 0.016)
+            check(#Screens_._pushed == 0,
+              label .. " CRYSTAL review opened while Gen2 world was busy")
+            qGame.world.busy = function() return false end
+            rec.stubs["src.core.Game2"].update(qGame, 0.016)
+          else
+            local ow = { transitioning = true }
+            qGame.overworld = ow
+            qGame.stack:push(ow)
+            rec.stubs["src.core.Game"].update(qGame, 0.016)
+            check(#Screens_._pushed == 0,
+              label .. " CRYSTAL review opened during Gen1 transition")
+            ow.transitioning = false
+            rec.stubs["src.core.Game"].update(qGame, 0.016)
+          end
+          check(#Screens_._pushed == 1
+              and Screens_._pushed[1] == "KbCrystalReview",
+            label .. " CRYSTAL review did not open on a quiet frame")
+        end
+      end
     end
+  end
+end
+
+-------------------------------------------------------- every Gen 2 ROM
+
+-- Gold, Silver and Crystal are explicit fixtures, with deliberately
+-- different Kurt keys. This proves the handoff follows live map identity
+-- instead of accidentally continuing to pass on Gold's historical key.
+--
+-- The `kurt2` values are the real second SPRITE_KURT object: Gold and
+-- Silver repeat the same key on both objects, Crystal does not. Both keys
+-- are taken from the imported map caches, not invented.
+for _, version in ipairs({
+  { id = "gold", engine = "gs", kurt = "55:45e3" },
+  { id = "silver", engine = "gs", kurt = "silver:kurt" },
+  { id = "crystal", engine = "crystal",
+    kurt = "63:6178", kurt2 = "63:63bd" },
+}) do
+  local label = "gen2 " .. version.id
+  local ok, err, rec = loadMod(2,
+    { cheap_balls = true, canon_balls = true }, nil,
+    version.id, version.engine)
+  check(ok, label .. " entry chunk -> " .. tostring(err))
+  if ok then
+    local items = rec.registries.items or {}
+    if version.id == "crystal" then
+      check(items.GS_BALL == nil,
+        label .. " replaced Crystal's native GS BALL story item")
+    else
+      check(items.GS_BALL ~= nil,
+        label .. " did not register the throwable GS BALL")
+    end
+
+    local game = fakeGame(version.kurt, version.kurt2)
+    rec.modGame = game
+    for id in pairs(rec.registries.items or {}) do
+      game.data.items[id] = { id = id, price = 1 }
+    end
+    for _, fn in ipairs(rec.events["game.ready"] or {}) do
+      pcheck(label .. " game.ready", fn, { game = game })
+    end
+
+    for _, fn in ipairs(rec.events["script.started"] or {}) do
+      pcheck(label .. " Kurt start", fn,
+        { ctx = { scriptKey = version.kurt } })
+    end
+    game.save.inventory.LURE_BALL = 1
+    for _, fn in ipairs(rec.events["script.ended"] or {}) do
+      pcheck(label .. " Kurt end", fn,
+        { ctx = { scriptKey = version.kurt }, completed = true })
+    end
+    check(game.save.inventory.BALL_CASE == 1,
+      label .. " did not resolve Kurt and award the BALL CASE")
+    check(game.save.inventory.CHERISH_BALL == 1,
+      label .. " did not award Kurt's CHERISH BALL")
+
+    -- The OTHER Kurt object must count too. On Crystal the two objects
+    -- run genuinely different scripts, so a resolver that quietly picks
+    -- one of them would still pass every check above.
+    if version.kurt2 then
+      local ok2, err2, rec2 = loadMod(2,
+        { cheap_balls = true, canon_balls = true }, nil,
+        version.id, version.engine)
+      check(ok2, label .. " second-Kurt entry chunk -> " .. tostring(err2))
+      if ok2 then
+        local g2 = fakeGame(version.kurt, version.kurt2)
+        rec2.modGame = g2
+        for id in pairs(rec2.registries.items or {}) do
+          g2.data.items[id] = { id = id, price = 1 }
+        end
+        for _, fn in ipairs(rec2.events["game.ready"] or {}) do
+          pcheck(label .. " second-Kurt ready", fn, { game = g2 })
+        end
+        for _, fn in ipairs(rec2.events["script.started"] or {}) do
+          pcheck(label .. " second-Kurt start", fn,
+            { ctx = { scriptKey = version.kurt2 } })
+        end
+        g2.save.inventory.LURE_BALL = 1
+        for _, fn in ipairs(rec2.events["script.ended"] or {}) do
+          pcheck(label .. " second-Kurt end", fn,
+            { ctx = { scriptKey = version.kurt2 }, completed = true })
+        end
+        check(g2.save.inventory.BALL_CASE == 1,
+          label .. " did not recognise the second SPRITE_KURT object")
+      end
+    end
+
+    local stock = {}
+    for _, id in ipairs(game.data.gen2Marts.lists[1]) do stock[id] = true end
+    for _, id in ipairs({
+      "CAGE_BALL", "CRYSTAL_BALL", "STRANGE_BALL", "ORIGIN_BALL",
+    }) do
+      check(stock[id], label .. " dev shelf lacks " .. id)
+    end
+    check((stock.GS_BALL == true) == (version.id ~= "crystal"),
+      label .. " GS BALL shelf ownership is wrong")
+
+    local cap = rec.stubs["src.inventory.Bag"].capacity({}, "BALL")
+    local expected = version.id == "crystal" and 37 or 38
+    check(cap == expected,
+      ("%s dev headroom is %s, expected %d")
+        :format(label, tostring(cap), expected))
+  end
+end
+
+---------------------------------------------------------------- coexistence
+
+-- Gold must yield all seven shared ids either when the player disables the
+-- set or when a Gold-capable Custom Poke Balls mod is present.  LUXURY and
+-- CHERISH remain ours, and the reduced headroom is 12 native + 13 ours.
+for _, mode in ipairs({ "option-off", "custom-pokeballs" }) do
+  local options = { cheap_balls = false, canon_balls = mode ~= "option-off" }
+  local found = mode == "custom-pokeballs"
+    and { custom_pokeballs = { exports = {} } } or nil
+  local label = "gen2 coexistence " .. mode
+  local ok, err, rec = loadMod(2, options, found)
+  check(ok, label .. " entry chunk -> " .. tostring(err))
+  if ok then
+    local ids = {
+      "QUICK_BALL", "TIMER_BALL", "NET_BALL", "DUSK_BALL",
+      "REPEAT_BALL", "DREAM_BALL", "DIVE_BALL",
+    }
+    local items = rec.registries.items or {}
+    local exported = {}
+    for _, id in ipairs(rec.exports.balls or {}) do exported[id] = true end
+    check(items.LUXURY_BALL ~= nil, label .. " lost LUXURY BALL")
+    check(items.CHERISH_BALL ~= nil, label .. " lost CHERISH BALL")
+    for _, id in ipairs(ids) do
+      check(items[id] == nil, label .. " registered shared id " .. id)
+      check(not exported[id], label .. " exported shared id " .. id)
+    end
+
+    local game = fakeGame()
+    rec.modGame = game
+    for id in pairs(items) do game.data.items[id] = { id = id, price = 1 } end
+    for _, fn in ipairs(rec.events["game.ready"] or {}) do
+      pcheck(label .. " game.ready", fn, { game = game })
+    end
+    local stock = {}
+    for _, id in ipairs(game.data.gen2Marts.lists[1]) do stock[id] = true end
+    check(stock.LUXURY_BALL, label .. " mart lost LUXURY BALL")
+    check(not stock.CHERISH_BALL, label .. " mart sells CHERISH BALL")
+    for _, id in ipairs(ids) do
+      check(not stock[id], label .. " stocked shared id " .. id)
+    end
+
+    local cap = rec.stubs["src.inventory.Bag"].capacity({}, "BALL")
+    check(cap == 25,
+      ("%s headroom is %s, expected 25 (12 + 13)")
+        :format(label, tostring(cap)))
   end
 end
 

@@ -1,8 +1,9 @@
 # Too Many Balls
 
-Custom Poké Balls for gen1recomp — on **Red/Blue/Yellow and, since
-0.4.0, Pokémon Gold**. Fourteen of them now, which is where the name
-came from. `main.lua` is commented to be read and copied: every ball is
+Custom Poké Balls for gen1recomp — on **Red/Blue/Yellow and Pokémon
+Gold/Silver/Crystal**. The collection keeps growing, which is where the
+name came from. `main.lua` is commented to be read and copied: every ball
+is
 one self-contained pattern with the engine file and line it was verified
 against, on both generations.
 
@@ -16,7 +17,7 @@ you still have it.)*
 <img src="https://raw.githubusercontent.com/mistermiracle3036/Too-Many-Balls/main/docs/ball-colors.png" width="520" alt="Every ball in its own colors: Premier, Nest, Moon, Heal, Fast, Mirror, Silph, GS, Beast, Snare, Drift and Cradle">
 
 There are two ways to get a ball here. Most are **bought** at marts. The
-rest are **crafted** from Apricorns in the BALL CASE, which is a Gold
+rest are **crafted** from Apricorns in the BALL CASE, which is a Gen 2
 feature — Kurt gives you the case, and it is worth having.
 
 ## Balls you buy
@@ -29,7 +30,22 @@ feature — Kurt gives you the case, and it is worth having.
 | MIRROR BALL (¥1200) | Great/Ultra marts | 4× when the wild Pokémon is the same species as the one you have out |
 | MOON BALL (¥1200) | Pewter Mart, before Mt. Moon — *Gen 1 only* | 4× vs species that evolve by Moon Stone |
 | FAST BALL (¥1000) | Great/Ultra marts — *Gen 1 only* | 4× vs species with base Speed ≥ 100 |
-| SILPH BALL (¥9800) | Saffron Mart (Gold: "PROTO BALL", Ultra-tier marts) | Guaranteed catch — except one throw in **two** fizzles, and the ball is spent either way |
+| LUXURY BALL (¥3000) | Great/Ultra marts | Plain odds; on Gen 2 the catch starts at 120 happiness |
+| SILPH BALL (¥9800) | Saffron Mart (Gen 2: "PROTO BALL", Ultra-tier marts) | Guaranteed catch — except one throw in **two** fizzles, and the ball is spent either way |
+
+Gold, Silver and Crystal also sell seven familiar later-generation balls at Great/Ultra
+marts. Every one has a two-line description in the mart, so its condition
+is visible before you buy it.
+
+| Gen 2 ball | Price | What it does |
+| -------------- | ----- | ------------ |
+| QUICK BALL | ¥1000 | 4× on the first battle turn; normal afterward |
+| TIMER BALL | ¥1000 | Starts at 1×, then gains 1× every five turns up to 4× |
+| NET BALL | ¥1000 | 3× on WATER- or BUG-type Pokémon |
+| DUSK BALL | ¥1000 | 3× at night or inside a cave/dungeon |
+| REPEAT BALL | ¥1000 | 3× on a species already marked caught in your Pokédex |
+| DREAM BALL | ¥1000 | 4× on a sleeping Pokémon; freeze does not count |
+| DIVE BALL | ¥1000 | 3× while fishing or surfing |
 
 <img src="https://raw.githubusercontent.com/mistermiracle3036/Too-Many-Balls/main/docs/mart-shelf.png" width="360" alt="A Kanto mart's ball shelf listing NEST, HEAL, FAST, MIRROR and SILPH BALLs with prices">
 
@@ -50,9 +66,12 @@ exactly one after the takeover.
 
 ## Balls you make — the BALL CASE
 
-*Pokémon Gold only.* Kurt has been making balls out of Apricorns for
+*Gold, Silver and Crystal.* Kurt has been making balls out of Apricorns for
 years. When you come back to him from the Slowpoke Well he decides
-you're worth teaching, and hands over a **BALL CASE**.
+you're worth teaching, and hands over a **BALL CASE**. Once the key item
+is safely in your bag, he also gives you one **CHERISH BALL** as a
+keepsake. It has plain catch odds and is not sold. If the BALL pocket is
+full, the Cherish Ball may not fit, but the Case is never blocked or lost.
 
 <table>
 <tr>
@@ -123,12 +142,31 @@ Apricorns come off the seven Apricorn trees, and the recipes are costed
 against that supply — the case is meant to be worth a detour, not a
 vending machine.
 
-## Two balls you won't see
+## Quest-artifact balls
 
-**GS BALL** and **BEAST BALL** exist but aren't obtainable in normal
-play; they're behind the *[DEV] CHEAP BALLS* option. They're still
-registered on every boot on purpose, so if you ever got one they stay in
-the BALLS pocket and look like themselves rather than turning into junk.
+Four balls are built for quests to award and are deliberately absent from
+normal shelves, recipes and unlocks. Turn on **[DEV] CHEAP BALLS** to put
+them on test shelves for ¥1:
+
+| Ball | What it does |
+| ---- | ------------ |
+| **CAGE BALL** | Starts at normal odds, becomes 2× after one failed Cage Ball, and guarantees the third Cage throw in the same battle. Its spiked design is inspired by Lawrence III's legendary-bird cages. |
+| **CRYSTAL BALL** | Normal odds, then reviews the exact catch's level, DVs, moves and PP. KEEP is the default. RELEASE needs a second confirmation, refunds the ball first, and permanently removes only that exact new party/box record. |
+| **STRANGE BALL** | Randomly uses 0.75×, 1×, 1.5× or 2× strength on each throw. |
+| **ORIGIN BALL** | Guaranteed wild catch, reserved for a single fateful quest encounter. |
+
+These records, descriptions and colours exist on both generations even
+with the dev option off, so another quest mod can grant one safely without
+creating a raw or unusable item.
+
+## Other balls you won't normally see
+
+**GS BALL** and **BEAST BALL** aren't obtainable in normal play; they're
+behind the *[DEV] CHEAP BALLS* option. Beast Ball is registered on every
+boot, and the throwable GS Ball is registered in Red, Blue, Yellow, Gold
+and Silver, so one you already hold stays usable. Crystal is the exception:
+its own GS Ball is a story key item, so Too Many Balls leaves that item and
+its Celebi quest untouched and does not put GS Ball on Crystal's test shelf.
 
 The **ACE BALL** is a case recipe that stays hidden until another mod
 teaches it — that hook is for [Route
@@ -141,20 +179,25 @@ so the mod does — it is what lets [Kanto
 Ribbons](https://github.com/mistermiracle3036/kanto_ribbons) award a
 ribbon for how something was caught.
 
-## On Pokémon Gold
+## On Pokémon Gold, Silver and Crystal
 
-Since 0.4.0 the mod loads on a Gold boot too. The bought balls appear on
-Johto shelves that already stock GREAT or ULTRA BALLs:
+The bought balls appear on Johto shelves that already stock GREAT or ULTRA
+BALLs. Version 0.8.0 makes the full path explicit on all three Gen 2 games:
 
 <img src="https://raw.githubusercontent.com/mistermiracle3036/Too-Many-Balls/main/docs/mart-shelf-gold.png" width="360" alt="A Johto mart shelf listing the mod's balls alongside Gold's own">
 
 What's different there:
 
-- **The whole craft tier is Gold-only**, because Kurt and the Apricorns
+- **Quick, Timer, Net, Dusk, Repeat, Dream and Dive are Gen 2-only here.**
+  They use the live turn count, species types, Pokédex, time of day and
+  fishing/surfing state. Red keeps those shared ids available to Custom
+  Poké Balls instead.
+
+- **The whole craft tier is Gen 2-only**, because Kurt and the Apricorns
   are. The balls themselves are registered on Red as well, so one that
   arrives from elsewhere still works and still sorts correctly — there's
   just no way to make one there.
-- **MOON and FAST stay in Kanto** — Gold has its own native Moon Ball
+- **MOON and FAST stay in Kanto** — each Gen 2 game has its own native Moon Ball
   and Fast Ball (Kurt makes them from Apricorns), so ours step aside
   rather than fight them.
 - **The prototype is labelled "PROTO BALL"** — Silph Co doesn't exist in
@@ -163,31 +206,31 @@ What's different there:
 - **The Premier bonus works, clerk line and all** — buy 10+ balls in one
   purchase and he adds "I'll throw in a PREMIER BALL, too!" to his
   thank-you, same as in Kanto.
-- **Each ball has its own colour when thrown.** Gold colours balls
+- **Each ball has its own colour when thrown.** Gen 2 colours balls
   itself, but only knows the ones the cart ships, so custom balls would
   otherwise all throw grey. This mod supplies its own palettes and
-  leaves Gold's native Moon and Fast Balls exactly as they are. Add
+  leaves the native Moon and Fast Balls exactly as they are. Add
   **Pokeball Colors** and those same colours show up on the Pokémon
   Center heal machine as well.
-- **Your BALLS pocket grows to fit.** Gold's ball pocket holds twelve
-  kinds, which this mod would fill on its own, so it adds one slot per
-  ball it registers. Turn on *VANILLA BAG LIMITS* if you'd rather it
+- **Your BALLS pocket grows to fit.** The Gen 2 ball pocket holds twelve
+  kinds, so the mod adds one slot per obtainable ball. Turn on
+  *VANILLA BAG LIMITS* if you'd rather it
   didn't. The same thing happens on Red, Blue and Yellow — see below.
 
 ## Bag space
 
 This mod adds more kinds of ball than either game left room for, so it
-makes room: **one extra slot per ball it registers**, and no more.
+makes room: **one extra slot per obtainable ball**, and no more.
 
 It counts the balls you can actually **get** on the game you're playing,
 not every ball the mod knows about.
 
-- On **Gold** that is eleven, added to the BALLS pocket, which otherwise
-  holds twelve kinds — so a full pocket holds Gold's own twelve kinds and
-  all of ours.
-- On **Red, Blue and Yellow** there is only one bag, and only seven of
-  these balls exist there: the six on shelves plus the Premier Ball. The
-  craft tier needs the BALL CASE, which is Kurt's and so Gold's, so it
+- On **Gold, Silver or Crystal** that is twenty with the canon set active, added to the BALLS
+  pocket's native twelve. If the shared seven are disabled or deferred to
+  Custom Poké Balls, the addition is thirteen.
+- On **Red, Blue and Yellow** there is only one bag, and eight obtainable
+  balls reserve room: the seven on shelves plus the Premier Ball. The
+  craft tier needs the BALL CASE, which is Kurt's and so Johto's, so it
   reserves no room in a Kanto bag.
 
 It is added to whatever the game answers rather than replacing the
@@ -201,7 +244,7 @@ entirely if you would rather keep the original limit.
   detection the Premier bonus needs is built in. (It used to require a
   separate **Shop Events** mod; that was folded in, and you can remove it
   if you still have it.)
-- gen1recomp 0.1.38+ (Gold support needs 0.1.78+, which is when the
+- gen1recomp 0.1.38+ (Gen 2 support needs 0.1.78+, which is when the
   engine gained Gen 2)
 
 ## Installation
@@ -221,13 +264,23 @@ automatically and updates in place.
 
 ## Options
 
-- **[DEV] CHEAP BALLS** — puts GS and BEAST on every ball shelf and
-  widens the Gold shelves to every mart. For testing.
-- **VANILLA BAG LIMITS** — keeps Gold's stock twelve-kind ball pocket
+- **[DEV] CHEAP BALLS** — puts Beast and the four quest-artifact balls on
+  every ball shelf, plus GS Ball everywhere except Crystal, and widens Gen 2
+  shelves to every mart. For testing.
+- **VANILLA BAG LIMITS** — keeps Gen 2's stock twelve-kind ball pocket
   instead of growing it.
+- **CANON BALL SET** — Gen 2 only, on by default. Turn it off if a Gen 2
+  version of **Custom Poké Balls** should own Quick, Timer, Net, Dusk,
+  Repeat, Dream and Dive instead. If you switch it off while holding any
+  of those seven, they appear as raw items in the ITEMS pocket until you
+  enable the set again; they are not deleted.
 
-*A note for Gold players:* the engine currently doesn't persist mod
-options set on a Gold boot. Set these from a Red boot and they'll stick.
+**Changing an option needs a restart to take effect.** The setting is
+saved right away, but which balls exist, what they cost and which shelves
+carry them are all decided when the mod loads -- so quit fully and
+relaunch, and the change is there. (Options set on a Gen 2 boot do stick
+now; if you are reading an older note that says to set them from a Red
+boot, that is out of date.)
 
 ## Plays well with
 
@@ -237,22 +290,24 @@ options set on a Gold boot. Set these from a Red boot and they'll stick.
     each has its own look during the throw. This mod owns those records
     and their colors; Pokeball Colors deliberately carries no entries for
     them, the same arrangement it has with Snag Quest's SNAG BALL.
-  - *Gold:* the game already colours a thrown ball, and this mod supplies
+  - *Gold/Silver/Crystal:* the game already colours a thrown ball, and this mod supplies
     the palettes for its own. What Pokeball Colors adds there is the
-    **Pokémon Center heal machine** — Gold draws every party ball in one
+    **Pokémon Center heal machine** — Gen 2 draws every party ball in one
     colour, and Colors gives each slot the colour of the ball that Pokémon
     was actually caught in. It reads that from the same palettes this mod
     registers, so the two match with no setup.
 
-  For other ball authors: claim a Gold colour through
+  For other ball authors: claim a Gen 2 colour through
   `exports.registerBallPalette(ballId, paletteName, row)` rather than
   wrapping `ballPalette` a second time — two wraps means load order
   decides the colour, silently. A ball registered that way is picked up
   by the heal machine too. There's a matching
   `exports.requestBallSlots(n)` if your mod needs pocket headroom of its
   own.
-- **Custom Poké Balls** by magalvao — coexists; both mods append to the
-  same mart shelves, and no ball is duplicated between them.
+- **Custom Poké Balls** by magalvao — the shared ids are intentional.
+  Custom Poké Balls owns Quick, Timer, Net, Dusk, Repeat, Dream and Dive
+  on Red; Too Many Balls supplies them on Gen 2 unless a Gen 2 port of that
+  mod is loaded. The **CANON BALL SET** option is the manual fallback.
 
 ## Using this as a template
 
@@ -272,7 +327,7 @@ per generation. After it, each ball is one pattern:
 - **Kecleon** — a ball whose whole effect is a palette, not maths
 - **Cradle** — rewriting the caught Pokémon after the fact, safely
 
-And for Gold, the Gen 2 seams in one place: a `catch.rate` wrap carrying
+And for Gold/Silver/Crystal, the Gen 2 seams in one place: a `catch.rate` wrap carrying
 every ball's behaviour, the `pocket` stamp that puts custom items in the
 BALLS pocket, the presence-checked mart append, a key item that opens a
 mod-owned screen, and an NPC handover driven off script events — each
