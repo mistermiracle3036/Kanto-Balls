@@ -79,6 +79,17 @@ local function engineStubs(generation, versionId, engineLine)
         return save.boxes
       end,
     },
+    -- Both real names, with their real numbers (engine/src/core/gen2/
+    -- FlagNames.lua:561 and :887). Carrying the DECOY matters: the retro
+    -- case below sets only flag 43, so a mod that read
+    -- EVENT_KURT_GAVE_YOU_LURE_BALL instead -- which is what 0.8.4-0.8.8
+    -- derived -- still fails here.
+    ["src.core.gen2.FlagNames"] = {
+      events = {
+        EVENT_CLEARED_SLOWPOKE_WELL = 43,
+        EVENT_KURT_GAVE_YOU_LURE_BALL = 53,
+      },
+    },
     ["src.core.gen2.Boxes"] = {
       NUM_BOXES = 14,
       box = function(save, index)
@@ -259,44 +270,6 @@ local function fakeGame(kurtKey, kurtKey2)
       items = vanillaItems, pokemon = {}, moves = {},
       gen2Marts = { lists = { { "POKE_BALL", "GREAT_BALL", "ULTRA_BALL" } } },
       gen2Palettes = { battleObjects = {} },
-      -- Kurt's script, in the shape both lineages really carry: check the
-      -- already-gifted flag, then the rescue flag, and the rescue branch
-      -- is the one holding verbosegiveitem. The mod reads the flag number
-      -- back out of this rather than baking in 43.
-      gen2Scripts = {
-        ["55:45e3"] = {
-          { op = "faceplayer" },
-          { op = "opentext" },
-          { op = "checkevent", event = 53 },
-          { op = "iftrue", script = "55:4637" },
-          { op = "checkevent", event = 43 },
-          { op = "iftrue", script = "55:462a" },
-          { op = "writetext", text = "55:47ee" },
-          { op = "end" },
-        },
-        -- THE 53 BRANCH REACHES A GIVE TOO, at depth 2, exactly as both
-        -- real ROMs do (Gold 55:4637 -> 55:4704, Crystal 63:61cc ->
-        -- 63:62b4 -- the later apricorn-ball conversations). Without
-        -- this the fixture cannot tell "first branch that reaches a
-        -- give" from "shallowest give" and both pickers look correct,
-        -- which is how 0.8.4 shipped gating on the wrong event.
-        ["55:4637"] = {
-          { op = "writetext", text = "x" },
-          { op = "iftrue", script = "55:4704" },
-          { op = "end" },
-        },
-        ["55:4704"] = {
-          { op = "verbosegiveitem", item = 161, quantity = 1 },
-          { op = "end" },
-        },
-        ["55:462a"] = {
-          { op = "writetext", text = "y" },
-          { op = "promptbutton" },
-          { op = "verbosegiveitem", item = 160, quantity = 1 },
-          { op = "setevent", event = 53 },
-          { op = "end" },
-        },
-      },
       gen2Maps = { KURTS_HOUSE = { objects = {
         { index = 1, sprite = "SPRITE_KURT",
           scriptKey = kurtKey or "55:45e3" },
