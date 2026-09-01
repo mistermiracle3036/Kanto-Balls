@@ -78,7 +78,7 @@
 -- versioning with shop_events.)
 
 return function(mod)
-  local VERSION = "0.8.8"
+  local VERSION = "0.8.9"
   mod.exports.version = VERSION
 
   -- Which generation THIS boot is -- fixed for the whole run, the same
@@ -466,7 +466,13 @@ return function(mod)
     DREAM_BALL   = "Best on a sleeping\nPOKeMON.",
     DIVE_BALL    = "Good while fishing\nor while surfing.",
     CAGE_BALL    = "Each failed throw\ncloses its cage.",
-    CRYSTAL_BALL = "Inspect the catch.\nKeep it or let go.",
+    -- GEN 2 ONLY promises the review.  On Gen 1 the screen that draws
+    -- it cannot be loaded at all (see the Chrome require above), so the
+    -- ball is a plain-odds ball there and the text says so rather than
+    -- offering a keep-or-release step that never comes.  Both strings
+    -- are inside the two-line, 18-column budget the drawer allows.
+    CRYSTAL_BALL = GEN2 and "Inspect the catch.\nKeep it or let go."
+                         or "Plain catch odds.\nIts lens is dark.",
     STRANGE_BALL = "Its catch strength\nvaries each throw.",
     ORIGIN_BALL  = "Made for a single\nfateful encounter.",
   }
@@ -2879,27 +2885,63 @@ return function(mod)
     -- fallback, so a ROM shaped differently is no worse off than before.
     local KURT_FLAG = nil
 
-    local function scriptGives(scripts, key, depth)
-      if type(key) ~= "string" or depth > 3 then return false end
+    -- HOW DEEP the give is, or nil for a branch that never reaches one.
+    -- The DEPTH is the point -- see the picker below.  A branch that
+    -- hands something over in its own body is a different kind of answer
+    -- from one that only reaches a give three jumps away.
+    local function giveDepth(scripts, key, depth)
+      if type(key) ~= "string" or depth > 3 then return nil end
       local rows = scripts[key]
-      if type(rows) ~= "table" then return false end
+      if type(rows) ~= "table" then return nil end
+      local best = nil
       for _, row in ipairs(rows) do
         local op = row and row.op
         if op == "verbosegiveitem" or op == "verbosegiveitemvar"
             or op == "giveitem" then
-          return true
+          return depth
         end
-        if (op == "iftrue" or op == "iffalse" or op == "sjump")
-            and scriptGives(scripts, row.script, depth + 1) then
-          return true
+        if op == "iftrue" or op == "iffalse" or op == "sjump" then
+          local d = giveDepth(scripts, row.script, depth + 1)
+          if d and (not best or d < best) then best = d end
         end
       end
-      return false
+      return best
     end
 
+    -- PICK THE SHALLOWEST GIVE, NOT THE FIRST BRANCH THAT REACHES ONE.
+    -- 0.8.4 returned on the first hit and that was the wrong flag on
+    -- both lineages -- checked against the imported script tables, and
+    -- the device probe printed `f53`:
+    --
+    --   Gold     (53 -> 55:4637) reaches a give at depth 2
+    --            (43 -> 55:462a) GIVES AT DEPTH 1
+    --   Crystal  (53 -> 63:61cc) reaches a give at depth 2
+    --            (43 -> 63:61bf) GIVES AT DEPTH 1
+    --
+    -- 53 is "the LURE BALL has already been handed over"; 43 is "Slowpoke
+    -- Well is done".  Gating on 53 lost the case for a player who came
+    -- back to Kurt with a FULL BALL POCKET: his verbosegiveitem fails,
+    -- 53 is never set, nothing enters the bag, so the flag AND the
+    -- bag-diff fallback both said no and he handed over nothing.  43 is
+    -- set in the well itself and is true in that run either way.
+    --
+    -- Depth 1 means "this branch gives something itself", which is what
+    -- the rescue branch does.  The depth-2 hits are the later
+    -- apricorn-ball conversations reached from the post-gift branch --
+    -- real gives, but not the moment being looked for.
+    --
+    -- DETERMINISTIC: the keys are sorted before the walk.  pairs() order
+    -- is undefined and there are two Kurt objects per house, so a
+    -- first-hit return could resolve a different event between launches
+    -- of the same save.
     local function findKurtFlag(scripts)
       if type(scripts) ~= "table" then return nil end
-      for key in pairs(KURT_SCRIPTS) do
+      local keys = {}
+      for key in pairs(KURT_SCRIPTS) do keys[#keys + 1] = key end
+      table.sort(keys)
+
+      local bestFlag, bestDepth = nil, nil
+      for _, key in ipairs(keys) do
         local rows = scripts[key]
         if type(rows) == "table" then
           local pending = nil
@@ -2908,15 +2950,18 @@ return function(mod)
             if op == "checkevent" then
               pending = row.event
             elseif op == "iftrue" then
-              if pending and scriptGives(scripts, row.script, 1) then
-                return pending
+              if pending then
+                local d = giveDepth(scripts, row.script, 1)
+                if d and (not bestDepth or d < bestDepth) then
+                  bestFlag, bestDepth = pending, d
+                end
               end
               pending = nil
             end
           end
         end
       end
-      return nil
+      return bestFlag
     end
 
     -- TRUE once the well is done.  A missing flag, a missing overworld or

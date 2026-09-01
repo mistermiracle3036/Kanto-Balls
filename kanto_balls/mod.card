@@ -1,10 +1,10 @@
 return {
-  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.8 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
+  summary = "A large custom-ball collection for Red/Blue/Yellow and Gold/Silver/Crystal. Version 0.8.9 adds four quest-artifact balls, carries every Gen 2 feature across all three games, preserves Crystal's native GS Ball story item, and fixes Kurt failing to hand over the Ball Case.",
   author = "Mister Miracle",
   tags = { "balls", "items", "template", "gold", "crafting", "apricorns" },
   differences = {
     "CAGE BALL (quest/dev only): 1x on its first throw, 2x after one failed Cage Ball, then guaranteed after two failures in the same battle.",
-    "CRYSTAL BALL (quest/dev only): plain catch odds, followed after normal catch storage by a two-page details/moves review. KEEP is default; confirmed RELEASE refunds the ball first and removes only the exact newly caught party/box record.",
+    "CRYSTAL BALL (quest/dev only): plain catch odds. On Gen 2 the catch is followed by a two-page details/moves review; on Gen 1 there is no review -- the screen cannot be loaded there -- and its item description says so instead of promising one. KEEP is default; confirmed RELEASE refunds the ball first and removes only the exact newly caught party/box record.",
     "STRANGE BALL (quest/dev only): independently chooses 0.75x, 1x, 1.5x or 2x on each real throw using battle RNG. ORIGIN BALL (quest/dev only): guaranteed wild catch for a fateful encounter.",
     "GEN 2 CANON SET: Quick (4x on turn 1), Timer (grows to 4x), Net (3x on WATER/BUG), Dusk (3x at night or in caves), Repeat (3x on a previously caught species), Dream (4x on sleep) and Dive (3x while fishing or surfing). Each costs 1000 at Great/Ultra marts and has a two-line mart description.",
     "LUXURY BALL (3000, both games): plain catch odds; on Gen 2 the catch starts at 120 happiness. CHERISH BALL: plain odds, never sold; Kurt gives one after the BALL CASE is safely added.",

@@ -274,7 +274,21 @@ local function fakeGame(kurtKey, kurtKey2)
           { op = "writetext", text = "55:47ee" },
           { op = "end" },
         },
-        ["55:4637"] = { { op = "writetext", text = "x" }, { op = "end" } },
+        -- THE 53 BRANCH REACHES A GIVE TOO, at depth 2, exactly as both
+        -- real ROMs do (Gold 55:4637 -> 55:4704, Crystal 63:61cc ->
+        -- 63:62b4 -- the later apricorn-ball conversations). Without
+        -- this the fixture cannot tell "first branch that reaches a
+        -- give" from "shallowest give" and both pickers look correct,
+        -- which is how 0.8.4 shipped gating on the wrong event.
+        ["55:4637"] = {
+          { op = "writetext", text = "x" },
+          { op = "iftrue", script = "55:4704" },
+          { op = "end" },
+        },
+        ["55:4704"] = {
+          { op = "verbosegiveitem", item = 161, quantity = 1 },
+          { op = "end" },
+        },
         ["55:462a"] = {
           { op = "writetext", text = "y" },
           { op = "promptbutton" },
@@ -1060,8 +1074,13 @@ for _, gen in ipairs({ 1, 2 }) do
             pcheck(label .. " retro end", fn,
               { ctx = { scriptKey = KEY }, completed = true })
           end
+          -- flags[43] ALONE is set -- the rescue flag, not 53. If the
+          -- resolver picks 53 ("Lure Ball already handed over") this
+          -- fails, which is the 0.8.4 bug: a player back from the well
+          -- with a full BALL pocket sets neither 53 nor a bag gain.
           check(retro.save.inventory.BALL_CASE == 1,
-            label .. " no case on a save already past Kurt's gift")
+            label .. " no case on the rescue flag alone -- resolver "
+              .. "picked the wrong event")
         end
 
         -- AND THE FLAG MUST NOT BE A FREE PASS. Same conversation, same

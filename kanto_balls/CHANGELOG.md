@@ -10,6 +10,18 @@ zips on one release is what broke the in-launcher updater, because the
 engine caches release assets per REPO and could not tell them apart. Shop
 Events was folded in; there is one mod and one zip now.
 
+## 0.8.9
+
+- **Fixed: Kurt could still withhold the Ball Case if your BALL pocket was
+  full when you came back from Slowpoke Well.** He tries to give you a Lure
+  Ball first, and with no room that fails -- which the mod was reading as
+  "this is not the return trip" and quietly giving you nothing. It now
+  keys off the well being cleared, which is true either way. If you hit
+  this, just talk to him again; nothing was lost.
+- The **CRYSTAL BALL's description on Red, Blue and Yellow** no longer
+  promises the keep-or-release review that 0.8.8 made Gen 2 only. It
+  reads as a plain-odds ball there, which is what it is.
+
 ## 0.8.8
 
 **Fixes a serious bug in 0.8.7: the mod did not load at all on Red, Blue
